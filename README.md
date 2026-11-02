@@ -222,3 +222,6 @@ The updater's repository tests use temporary local Git repositories under
 ```shell
 python3 scripts/tests/test_vos_sync_upstream.py
 ```
+
+The minimum VOS platform requirement is `>=3.0.0`, matching the working Model Hub
+and PGV packages. Feature-document revision numbers do not define platform releases.
