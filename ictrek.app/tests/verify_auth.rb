@@ -47,6 +47,10 @@ puts 'PASS: online verification, separate accounts, rename stability, repeated l
 base = '/app/com.ictrek.gitlab'
 browser = ActionDispatch::Integration::Session.new(Rack::URLMap.new(base => Rails.application))
 browser.host!('gitlab.test')
+browser.get("#{base}/-/vos/fastpath.js")
+assert(browser.response.status == 200, "Bridge script failed: #{browser.response.status}")
+assert(browser.response.media_type == 'application/javascript', 'Bridge script has the wrong content type')
+puts 'PASS: public bridge script is available to a native script tag'
 browser.get("#{base}/-/vos/sign_in")
 assert(browser.response.status == 200, "Bootstrap failed: #{browser.response.status} #{browser.response.location}")
 doc = Nokogiri::HTML(browser.response.body)

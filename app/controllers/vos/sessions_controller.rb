@@ -5,6 +5,8 @@ module Vos
     feature_category :system_access
     skip_before_action :authenticate_user!, :require_email, :active_user_check, :check_password_expiration,
       :enforce_terms!, :ldap_security_check, :check_two_factor_requirement, raise: false
+    # This action serves only public, static JavaScript without session data.
+    skip_forgery_protection only: :script
     before_action :require_vos_provider
 
     def new

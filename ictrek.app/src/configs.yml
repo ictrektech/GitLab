@@ -3,8 +3,8 @@ configs:
     type: path
     title: {zh-CN: GitLab 数据目录, en: GitLab data directory}
     description:
-      zh-CN: 选择 NAS 公共目录或宿主机路径。GitLab 在其 gitlab 子目录中保存仓库、数据库、配置及密钥。不要让其他应用直接修改这些文件；迁移须完整备份并停机操作。
-      en: Select a NAS public directory or host path. GitLab stores repositories, database, configuration, and keys in its gitlab subdirectory. Keep other applications from modifying these files. Migrate with a complete backup while stopped.
+      zh-CN: 选择 NAS 公共目录或宿主机路径。GitLab 在其 gitlab 子目录中保存仓库、上传文件、配置及密钥；PostgreSQL 数据保存在 PGV 中。不要让其他应用直接修改这些文件；迁移须完整备份并停机操作。
+      en: Select a NAS public directory or host path. GitLab stores repositories, uploads, configuration, and keys in its gitlab subdirectory; PostgreSQL data remains in PGV. Keep other applications from modifying these files. Migrate with a complete backup while stopped.
     default: /data/vos_workspace/gitlab
     hints: [com.ictrek.gitlab.storage]
   - name: GITLAB_EXTERNAL_URL
