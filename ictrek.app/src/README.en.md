@@ -30,3 +30,6 @@ Block the corresponding GitLab account when immediate revocation is required.
 This development package requires validation on the target VOS release before production use.
 
 If 0.0.2 was installed, stop it before upgrading. Select the previous `<GITLAB_STORAGE_PATH>/gitlab/data` as Data, and move the previous `gitlab/config` and `gitlab/logs` into the VOS application storage `config` and `logs` directories. Existing files are not moved automatically; retain database credentials and encryption keys.
+
+The external HTTPS URL is a required installation field with no empty default.
+For the 229 device, use `https://192.168.1.229:1180/app/com.ictrek.gitlab`.

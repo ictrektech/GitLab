@@ -13,7 +13,8 @@ configs:
     description:
       zh-CN: 浏览器及 Git 客户端使用的固定 VOS HTTPS 地址，须以 /app/com.ictrek.gitlab 结尾，例如 https://vos.example.com:1180/app/com.ictrek.gitlab。
       en: Stable HTTPS VOS URL used by browsers and Git clients, ending in /app/com.ictrek.gitlab, for example https://vos.example.com:1180/app/com.ictrek.gitlab.
-    default: ''
+    minLength: 1
+    pattern: '^https://[^/?#]+/app/com[.]ictrek[.]gitlab$'
   - name: GITLAB_SSH_PORT
     type: integer
     title: {zh-CN: Git SSH 端口, en: Git SSH port}

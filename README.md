@@ -225,3 +225,6 @@ python3 scripts/tests/test_vos_sync_upstream.py
 
 The minimum VOS platform requirement is `>=3.0.0`, matching the working Model Hub
 and PGV packages. Feature-document revision numbers do not define platform releases.
+
+The external HTTPS URL is a required installation field with no empty default.
+For the 229 device, use `https://192.168.1.229:1180/app/com.ictrek.gitlab`.

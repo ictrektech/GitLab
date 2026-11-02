@@ -56,6 +56,9 @@ def main():
                 if not isinstance(value, str) and (not isinstance(value, dict) or
                         not value or not all(isinstance(text, str) for text in value.values())):
                     raise SystemExit(f"Invalid localized {field} in {item['name']}")
+        external_url = next(item for item in configs if item['name'] == 'GITLAB_EXTERNAL_URL')
+        if 'default' in external_url or external_url.get('minLength', 0) < 1:
+            raise SystemExit('The external HTTPS URL must be required during installation')
         paths = [item['name'] for item in configs if item['type'] == 'path']
         if paths != ['GITLAB_DATA_PATH']:
             raise SystemExit('Only the Data directory should have a user-selectable path')
