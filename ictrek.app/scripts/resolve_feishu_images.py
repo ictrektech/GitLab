@@ -32,7 +32,10 @@ def load_credentials() -> tuple[str, str]:
         path = Path(raw)
         if not path.is_file():
             continue
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
         app_id = str(payload.get("feishu_app_id", "")).strip()
         secret = str(payload.get("feishu_app_secret", "")).strip()
         if app_id and secret:
