@@ -111,6 +111,22 @@ After both image publications succeed, run `ictrek.app/scripts/package.sh` on a 
 It resolves profile images from Feishu, validates both Compose profiles, and produces the pull
 package under `~/dev/build/gitlab/packages`. This command does not publish an app-store release.
 The staged package resolves its PGV dependency from the current published release.
+
+For a release, commit and push application code and update the VAI submodule reference first.
+After every affected profile image is published and recorded in Feishu, run locally:
+
+```shell
+./ictrek.app/scripts/update_version.sh patch
+```
+
+The script requires a clean checkout, bumps `ictrek.app/VERSION`, and pushes only the
+`vos-gitlab-v<version>` trigger tag. GitHub Actions builds and checks the package, creates
+public release `v<version>`, and publishes it to the VOS App Store. Reuse unchanged images
+for packaging-only releases. Configure `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `APPSTORE_IP`,
+and `APPSTORE_TOKEN` as repository Actions secrets. Verify the workflow and publication
+results before considering a release complete. The workflow's manual retry accepts an
+existing published version and verifies its artifact digest before retrying App Store upload.
+
 Set the external HTTPS URL ending in `/app/com.ictrek.gitlab` at installation, and trust its
 certificate in the browser and Git clients. The local GitLab administrator login remains available.
 
