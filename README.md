@@ -234,3 +234,7 @@ The container starting successfully does not mean first-time initialization is c
 
 Concurrent callbacks for the same verified VOS identity are serialized before native
 account lookup and creation, preventing duplicate first-login provisioning.
+
+Each login flow has its own five-minute challenge, bound to the native session CSRF
+token and atomically consumed in Redis. Parallel flows cannot overwrite a shared session
+state slot. Native CSRF validation and one-use replay rejection remain enabled.

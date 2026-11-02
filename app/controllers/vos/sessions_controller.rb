@@ -11,7 +11,7 @@ module Vos
 
     def new
       response.headers['Cache-Control'] = 'no-store'
-      @pending = session[OmniAuth::Strategies::Vos::STATE_KEY]
+      @pending = OmniAuth::Strategies::Vos.pending_challenge(params[:state], session)
       @client_id = Gitlab::Auth::OAuth::Provider.config_for('vos').dig('args', 'client_id') || 'com.ictrek.gitlab'
       render layout: 'devise_empty'
     end

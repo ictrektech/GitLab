@@ -9,7 +9,12 @@ module OmniAuth
     class Vos
       include OmniAuth::Strategy
 
-      STATE_KEY = 'omniauth.vos'.freeze
+      CHALLENGE_PREFIX = 'vos:oauth:challenge'.freeze
+      CONSUME_CHALLENGE = <<~LUA.freeze
+        if redis.call('get', KEYS[1]) == ARGV[1] then
+          return redis.call('getdel', KEYS[1])
+        end
+      LUA
       option :name, 'vos'
       option :client_id, 'com.ictrek.gitlab'
       option :endpoint, nil
@@ -17,20 +22,41 @@ module OmniAuth
       uid { @identity.fetch(:uid) }
       info { @identity.slice(:name, :nickname, :email) }
 
+      def self.pending_challenge(state, session, consume: false)
+        return unless state.is_a?(String) && state.match?(/\A[0-9a-f]{64}\z/)
+        return unless session['_csrf_token'].present?
+
+        expected = Digest::SHA256.hexdigest(session['_csrf_token'])
+        stored = Gitlab::Redis::SharedState.with do |redis|
+          key = "#{CHALLENGE_PREFIX}:#{state}"
+          consume ? redis.eval(CONSUME_CHALLENGE, keys: [key], argv: [expected]) : redis.get(key)
+        end
+        return unless stored && ActiveSupport::SecurityUtils.secure_compare(stored, expected)
+
+        { 'state' => state }
+      end
+
       def request_phase
-        session[STATE_KEY] = { 'state' => SecureRandom.hex(32), 'created_at' => Time.now.to_i }
-        redirect "#{script_name}/-/vos/sign_in"
+        return fail!(:csrf_detected) unless session['_csrf_token'].present?
+
+        state = SecureRandom.hex(32)
+        binding = Digest::SHA256.hexdigest(session['_csrf_token'])
+        Gitlab::Redis::SharedState.with do |redis|
+          redis.set("#{CHALLENGE_PREFIX}:#{state}", binding, ex: 300)
+        end
+        redirect "#{script_name}/-/vos/sign_in?state=#{state}"
       end
 
       def callback_phase
         return fail!(:invalid_request) unless request.post?
-        return fail!(:csrf_detected) unless Gitlab::RequestForgeryProtection.verified?(env)
+        unless Gitlab::RequestForgeryProtection.verified?(env)
+          Gitlab::AppLogger.warn(event: 'vos_authentication', stage: 'csrf_rejected')
+          return fail!(:csrf_detected)
+        end
 
-        pending = session.delete(STATE_KEY)
         state = request.POST['state']
-        unless pending.is_a?(Hash) && state.is_a?(String) &&
-            pending['created_at'].is_a?(Integer) && (Time.now.to_i - pending['created_at']).between?(0, 300) &&
-            ActiveSupport::SecurityUtils.secure_compare(pending['state'].to_s, state)
+        unless self.class.pending_challenge(state, session, consume: true)
+          Gitlab::AppLogger.warn(event: 'vos_authentication', stage: 'state_rejected')
           return fail!(:csrf_detected)
         end
 
