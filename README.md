@@ -47,6 +47,9 @@ personal access tokens, SSH keys, and account deletion remains separate work.
 The image extends a digest-pinned official GitLab EE runtime with the VOS provider files.
 It verifies that the runtime `VERSION` matches this checkout's `VERSION`.
 No precompiled upstream application files are replaced.
+The VOS runtime uses two Puma workers and Sidekiq concurrency 10 to avoid scaling
+GitLab processes to every CPU on a shared appliance.
+
 PostgreSQL is provided by the required PGV application. GitLab's bundled PostgreSQL is disabled.
 Redis remains bundled for now, independently of the PostgreSQL integration.
 

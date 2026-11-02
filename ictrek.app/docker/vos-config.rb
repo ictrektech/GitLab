@@ -10,6 +10,9 @@ external_url url.to_s
 nginx['listen_port'] = 80
 nginx['listen_https'] = false
 letsencrypt['enable'] = false
+# VOS shares host resources with other applications.
+puma['worker_processes'] = 2
+sidekiq['concurrency'] = 10
 postgresql['enable'] = false
 gitlab_rails['db_adapter'] = 'postgresql'
 gitlab_rails['db_encoding'] = 'unicode'
