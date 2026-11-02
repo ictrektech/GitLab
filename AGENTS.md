@@ -3,6 +3,19 @@
 This file provides default AI agent instructions for the GitLab project.
 For customization options, see .ai/README.md.
 
+## VOS upstream updates
+
+This repository starts from a source snapshot without GitLab's original history.
+For every upstream code update, use `python3 scripts/vos_sync_upstream.py`.
+Do not use `git pull upstream`, `git fetch --unshallow`, or a full-history fetch.
+The script shallow-fetches the source declared in `UPSTREAM`, preserves local changes
+through a three-way merge, and records the new baseline in the merge commit.
+Commit or stash local changes first. For conflicts, resolve and stage the affected files,
+then run the script with `--continue`. Use `--abort` to cancel the pending update.
+Never advance `UPSTREAM` manually or discard local VOS changes to resolve a conflict.
+Review and test the result before pushing, then update the VAI submodule reference.
+See [README.vos.md](README.vos.md) for checks, commands, and the snapshot history model.
+
 ## Local Overrides
 
 Read @CLAUDE.local.md
