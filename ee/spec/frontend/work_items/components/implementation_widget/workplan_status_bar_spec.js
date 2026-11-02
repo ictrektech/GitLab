@@ -6,7 +6,7 @@ describe('WorkplanStatusBar', () => {
 
   const createComponent = (props = {}) => {
     wrapper = shallowMount(WorkplanStatusBar, {
-      propsData: { variant: 'neutral', ...props },
+      propsData: { variant: 'placeholder', ...props },
     });
   };
 

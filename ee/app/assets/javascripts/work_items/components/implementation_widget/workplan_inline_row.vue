@@ -148,7 +148,7 @@ export default {
     notStartedStatus() {
       return {
         label: this.canUpdate ? s__('AgentPlan|Not yet created') : s__('AgentPlan|No workplan'),
-        variant: 'neutral',
+        variant: 'placeholder',
       };
     },
     statusByGenerationStatus() {
@@ -166,11 +166,10 @@ export default {
           label: this.awaitingInputLabel,
           variant: 'warning',
         },
-        // A user-initiated cancel matches the canceled session styling, but offers the
-        // default actions rather than a retry.
+        // Canceled runs aren't errors, but still offer the default actions rather than retry.
         [GENERATION_STATUS_CANCELED]: {
           label: s__('AgentPlan|Generation canceled'),
-          variant: 'error',
+          variant: 'neutral',
         },
         [GENERATION_STATUS_FAILED]: {
           label: s__('AgentPlan|Generation failed'),
@@ -209,6 +208,9 @@ export default {
     },
     showContinueAction() {
       return this.isAwaitingInput && this.canUpdate;
+    },
+    isRetryAction() {
+      return this.primaryAction === WORKPLAN_ACTION.RETRY;
     },
     primaryAction() {
       if (this.showContinueAction) return WORKPLAN_ACTION.CONTINUE;
@@ -317,29 +319,22 @@ export default {
           >
             {{ s__('AgentPlan|Continue') }}
           </gl-button>
-          <gl-button
-            v-else-if="primaryAction === $options.WORKPLAN_ACTION.RETRY"
-            ref="generationButton"
-            :disabled="Boolean(generationDisabledReason)"
-            accessible-disabled
-            icon="tanuki-ai"
-            :loading="generation.actionInFlight"
-            data-testid="retry-workplan-button"
-            @click="$emit('retry')"
+          <gl-button-group
+            v-else-if="
+              primaryAction === $options.WORKPLAN_ACTION.RETRY ||
+              primaryAction === $options.WORKPLAN_ACTION.CREATE
+            "
           >
-            {{ s__('AgentPlan|Try again') }}
-          </gl-button>
-          <gl-button-group v-else-if="primaryAction === $options.WORKPLAN_ACTION.CREATE">
             <gl-button
               ref="generationButton"
               :disabled="Boolean(generationDisabledReason)"
               accessible-disabled
               icon="tanuki-ai"
               :loading="generation.actionInFlight"
-              data-testid="inline-generate-button"
-              @click="$emit('generate')"
+              :data-testid="isRetryAction ? 'retry-workplan-button' : 'inline-generate-button'"
+              @click="$emit(isRetryAction ? 'retry' : 'generate')"
             >
-              {{ s__('AgentPlan|Generate') }}
+              {{ isRetryAction ? s__('AgentPlan|Try again') : s__('AgentPlan|Generate') }}
             </gl-button>
             <gl-disclosure-dropdown
               :items="$options.createWorkplanDropdownItems"

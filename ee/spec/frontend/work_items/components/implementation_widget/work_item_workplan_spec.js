@@ -778,6 +778,29 @@ describe('WorkItemWorkplan component (orchestrator)', () => {
       });
     });
 
+    describe('when the inline row emits "create-manually" after generation failed', () => {
+      beforeEach(async () => {
+        createComponent({
+          workplan: buildWorkplan({ generationStatus: 'FAILED' }),
+          canUpdate: true,
+        });
+        await findInlineRow().vm.$emit('create-manually');
+      });
+
+      it('opens the failed workplan directly in edit mode', () => {
+        expect(wrapper.emitted('request-panel')).toEqual([['workplan']]);
+        expect(findPanel().props('isEditing')).toBe(true);
+      });
+
+      it('closes without saving when editing is canceled', () => {
+        findPanel().vm.$emit('cancel-edit');
+
+        expect(wrapper.emitted('request-panel')).toEqual([['workplan'], [null]]);
+        expect(successMutationHandler).not.toHaveBeenCalled();
+        expect(findInlineRow().props('hasContent')).toBe(false);
+      });
+    });
+
     describe('when rendered inside a drawer', () => {
       let visitUrlSpy;
 
