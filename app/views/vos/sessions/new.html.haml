@@ -1,0 +1,11 @@
+- page_title _('Sign in'), 'VOS'
+%h1.gl-text-center= _('Continue with %{provider}') % { provider: 'VOS' }
+%p#vos-status{ role: 'status', data: { error_message: _('Authentication failed: %{error_message}') % { error_message: _('Please try again') } } }= _('Connecting…')
+- if @pending
+  = form_tag omniauth_callback_path(:user, :vos), id: 'vos-auth-form', data: { mode: 'callback', state: @pending['state'], client_id: @client_id } do
+    = hidden_field_tag :state, @pending['state']
+    = hidden_field_tag :access_token, ''
+- else
+  = form_tag omniauth_authorize_path(:user, :vos), id: 'vos-auth-form', data: { mode: 'start' } do
+    = submit_tag _('Continue'), class: 'gl-button btn btn-default'
+= javascript_include_tag vos_fastpath_path, defer: true

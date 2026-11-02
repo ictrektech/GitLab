@@ -1,0 +1,16 @@
+router-type: structured
+routers:
+  - id: com-ictrek-gitlab
+    kind: group
+    title: {zh-CN: GitLab, en: GitLab}
+    icon: lucide:git-fork
+    order: 220
+    children:
+      - id: gitlab
+        kind: page
+        title: {zh-CN: 代码协作, en: Code collaboration}
+        icon: lucide:git-fork
+        iframe-src: /app/com.ictrek.gitlab/-/vos/sign_in
+        keep-alive: false
+        entry-point: true
+        embed: true

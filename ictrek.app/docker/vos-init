@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -z "${GITLAB_EXTERNAL_URL:-}" ]]; then
+  echo 'GITLAB_EXTERNAL_URL is required, including /app/com.ictrek.gitlab.' >&2
+  exit 1
+fi
+mkdir -p /etc/gitlab /var/opt/gitlab /var/log/gitlab
+chmod 0700 /etc/gitlab /var/opt/gitlab /var/log/gitlab
+if [[ -e /var/opt/gitlab/postgresql/data/PG_VERSION ]]; then
+  echo 'An embedded PostgreSQL database exists. Migrate it to PGV before starting this image.' >&2
+  exit 1
+fi
+if [[ ! -s /etc/gitlab/vos-db-password ]]; then
+  echo 'PGV initialization must complete before starting GitLab.' >&2
+  exit 1
+fi
+export GITLAB_OMNIBUS_CONFIG="${GITLAB_OMNIBUS_CONFIG:-}
+from_file '/assets/vos-config.rb'"
+exec /assets/init-container

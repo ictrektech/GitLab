@@ -1,0 +1,72 @@
+x-gitlab: &gitlab
+  hostname: gitlab
+  restart: unless-stopped
+  shm_size: 256m
+  environment:
+    GITLAB_EXTERNAL_URL: ${GITLAB_EXTERNAL_URL}
+    GITLAB_SSH_PORT: ${GITLAB_SSH_PORT:-2424}
+    VOS_OIDC_ENDPOINT: http://${VOS_HOST_GW_IP:-172.17.0.1}:8105/v1000/oauth2
+    GITLAB_DB_HOST: pgv
+  ports:
+    - '127.0.0.1:${GITLAB_HTTP_PORT:-25880}:80'
+    - '${GITLAB_SSH_PORT:-2424}:22'
+  volumes:
+    - ${GITLAB_STORAGE_PATH}/gitlab/config:/etc/gitlab
+    - ${GITLAB_STORAGE_PATH}/gitlab/data:/var/opt/gitlab
+    - ${GITLAB_STORAGE_PATH}/gitlab/logs:/var/log/gitlab
+  networks:
+    vos_default:
+      aliases: [gitlab, ictrek-gitlab]
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.gitlab.rule=PathPrefix(`/app/com.ictrek.gitlab`)
+    - traefik.http.routers.gitlab.service=gitlab
+    - traefik.http.services.gitlab.loadbalancer.server.port=80
+    - traefik.http.routers.gitlab-entry.rule=(Path(`/app/com.ictrek.gitlab`) || Path(`/app/com.ictrek.gitlab/`)) && HeadersRegexp(`Sec-Fetch-Dest`, `document`)
+    - traefik.http.routers.gitlab-entry.priority=100
+    - traefik.http.routers.gitlab-entry.middlewares=gitlab-entry
+    - traefik.http.routers.gitlab-entry.service=gitlab
+    - traefik.http.middlewares.gitlab-entry.redirectregex.regex=^(https?://[^/]+)/app/com\.ictrek\.gitlab/?$$
+    - traefik.http.middlewares.gitlab-entry.redirectregex.replacement=$${1}/#/app/com.ictrek.gitlab/gitlab
+    - traefik.http.middlewares.gitlab-entry.redirectregex.permanent=false
+  healthcheck:
+    test: [CMD, /opt/gitlab/bin/gitlab-healthcheck, --fail, --max-time, '10']
+    interval: 30s
+    timeout: 15s
+    retries: 20
+    start_period: 15m
+x-pgv-init: &pgv-init
+  restart: 'no'
+  entrypoint: [/opt/gitlab/embedded/bin/ruby, /assets/prepare-pgv.rb]
+  environment:
+    GITLAB_DB_HOST: pgv
+    VOS_POSTGRES_PASSWORD: ${VOS_POSTGRES_PASSWORD:?VOS_POSTGRES_PASSWORD is required}
+  volumes:
+    - ${GITLAB_STORAGE_PATH}/gitlab/config:/etc/gitlab
+  networks: [vos_default]
+services:
+  gitlab-pgv-amd:
+    <<: *pgv-init
+    image: ${GITLAB_AMD_IMAGE}
+    profiles: [amd]
+  gitlab-pgv-arm:
+    <<: *pgv-init
+    image: ${GITLAB_ARM_IMAGE}
+    profiles: [arm]
+  gitlab-amd:
+    <<: *gitlab
+    image: ${GITLAB_AMD_IMAGE}
+    profiles: [amd]
+    depends_on:
+      gitlab-pgv-amd:
+        condition: service_completed_successfully
+  gitlab-arm:
+    <<: *gitlab
+    image: ${GITLAB_ARM_IMAGE}
+    profiles: [arm]
+    depends_on:
+      gitlab-pgv-arm:
+        condition: service_completed_successfully
+networks:
+  vos_default:
+    external: true

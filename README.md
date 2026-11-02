@@ -7,9 +7,11 @@ License files and copyright notices remain in the source tree.
 
 ### Current status
 
-Source import, upstream synchronization tooling, and the VAI `apps/GitLab` submodule are in place.
-VOS authentication, account mapping, application packaging, and device validation are not implemented yet.
-This repository does not currently provide an installable VOS app release.
+The repository includes source import, upstream synchronization, a VOS OmniAuth provider,
+stable account mapping, and CPU-only AMD64/ARM64 image and package definitions.
+Authentication uses the VOS iframe Fastpath with PKCE and online token introspection and userinfo checks.
+Device acceptance and publication are separate from these source changes.
+See the validation results reported with each delivered version before deploying it.
 
 The original upstream introduction and installation references are retained in
 [README-legacy.md](README-legacy.md).
@@ -19,22 +21,112 @@ This README describes maintenance of the VOS fork.
 snapshot commit used as the merge baseline.
 The default development branch is `main`.
 
+### Sign in with VOS
+
+The VOS menu opens `/app/com.ictrek.gitlab/-/vos/sign_in` on the same HTTPS origin as VOS.
+The browser performs the PKCE exchange through the VOS bridge, then posts the access token
+to GitLab's native CSRF-protected OmniAuth callback.
+The backend verifies token activity, expiration, audience, client ID, scope, subject, and
+the latest enabled user state through the configured VOS server.
+Tokens stay out of URLs, local storage, GitLab identity records, and application logs.
+
+The `vos` provider binds a SHA-256 encoding of the stable VOS `sub` to a native GitLab identity.
+It uses stable `vos_<subject-hash>` usernames and reserved placeholder emails under `users.invalid`.
+The initial displayed name comes from VOS. Configure a verified contact email separately for notifications.
+Email and LDAP auto-linking remain disabled for this provider even when other providers use them.
+VOS login does not grant GitLab administrator status or bypass GitLab two-factor authentication.
+GitLab account blocks, signup controls, and project/group permissions remain effective.
+
+No identity database migration is required. Changing the VOS identity provider behind an existing
+GitLab installation requires an explicit identity migration, rather than reusing this provider name.
+VOS account disablement rejects new sign-ins, but synchronization of existing GitLab sessions,
+personal access tokens, SSH keys, and account deletion remains separate work.
+
+### Images, profiles, and storage
+
+The image extends a digest-pinned official GitLab EE runtime with the VOS provider files.
+It verifies that the runtime `VERSION` matches this checkout's `VERSION`.
+No precompiled upstream application files are replaced.
+PostgreSQL is provided by the required PGV application. GitLab's bundled PostgreSQL is disabled.
+Redis remains bundled for now, independently of the PostgreSQL integration.
+
+| VOS profile | Architecture | Feishu sheet | Image tag |
+| --- | --- | --- | --- |
+| `amd` | `amd64` | `AMD_with_cuda` | `amd_<GitLab-VERSION>_<source-commit-12>` |
+| `arm` | `arm64` | `ARM_with_cuda` | `arm_<GitLab-VERSION>_<source-commit-12>` |
+
+The sheet names identify the existing release-table locations. Neither profile uses NVIDIA runtime.
+Runner is independent of the GitLab server. GPU jobs require GPU configuration on the Runner host,
+not on this application container. Runner is not installed or granted the Docker socket by this package.
+
+`GITLAB_STORAGE_PATH` is a `type: path` configuration with hint `com.ictrek.gitlab.storage`.
+Select a NAS public directory or host path as with Model Hub. The `gitlab/config`, `gitlab/data`,
+and `gitlab/logs` subdirectories retain repositories, local application state, configuration,
+and encryption keys. PostgreSQL data remains in PGV's managed storage.
+Stop GitLab before moving these directories and preserve their ownership and permissions.
+The icon uses the original upstream `app/assets/images/logo.svg` on a transparent 1024-pixel square.
+
+Build on an architecture-matched host after syncing the local checkout with `rsync`:
+
+```shell
+python3 ictrek.app/scripts/build_image.py --sheet AMD_with_cuda --source-commit <local-commit>
+python3 ictrek.app/scripts/build_image.py --sheet ARM_with_cuda --source-commit <local-commit>
+```
+
+Each command builds one platform, pushes its single-platform image to Huawei SWR, and records
+the tag in the corresponding Feishu sheet. Use `--no-push` for local image validation.
+The script performs no Git operations. Set `--base-image` to a mirror of the pinned digest when needed.
+Build contexts, logs, and metadata remain under `~/dev/build/gitlab` on the build host.
+
+The profile-specific one-shot PGV initializer creates database `gitlabhq_production`, role `gitlab`,
+and the required `amcheck`, `btree_gist`, `pg_trgm`, and `plpgsql` extensions.
+It validates PostgreSQL 17/18 and database ownership and never grants GitLab superuser privileges.
+Only this initializer receives the VOS PGV administrator credential.
+The application receives only its dedicated password through the protected configuration mount.
+That password is generated once and retained in `gitlab/config/vos-db-password` with mode `0600`.
+Keep that file with the GitLab configuration backup. Existing roles without their saved credential
+or databases owned by another role cause initialization to fail instead of being overwritten.
+Existing bundled PostgreSQL data requires an explicit migration before switching to this image.
+
+GitLab's external PostgreSQL requirements include `max_connections >= 400` and
+`shared_buffers >= 2GB`. The initializer checks these before loading the schema.
+PGV 0.0.58 defaults meet these requirements. Older installations or custom settings may be lower.
+Check the installed PGV without changing it:
+
+```shell
+python3 ictrek.app/scripts/check_pgv.py
+```
+
+An operator can explicitly apply the required capacity and restart shared PGV with
+`--apply-and-restart`. This briefly disconnects every application using that PGV instance.
+Schedule or obtain approval for that interruption before running the command.
+The script saves only the previous non-secret parameter values under `~/dev/build/gitlab`.
+Use `--restore-and-restart` to restore those values during an approved maintenance window.
+The GitLab package never restarts or silently reconfigures shared PGV itself.
+
+After both image publications succeed, run `ictrek.app/scripts/package.sh` on a build host.
+It resolves profile images from Feishu, validates both Compose profiles, and produces the pull
+package under `~/dev/build/gitlab/packages`. This command does not publish an app-store release.
+The staged package resolves its PGV dependency from the current published release.
+Set the external HTTPS URL ending in `/app/com.ictrek.gitlab` at installation, and trust its
+certificate in the browser and Git clients. The local GitLab administrator login remains available.
+
 ### VOS integration plan
 
 The initial design uses one shared GitLab instance with GitLab's native users, groups,
 projects, and permissions.
 VOS supplies platform identity, the navigation entry, and application lifecycle management.
-The following work remains subject to implementation and validation:
+The following boundaries guide implementation and acceptance:
 
-| Area | Planned integration |
+| Area | Integration and validation |
 | --- | --- |
-| Authentication | Start with GitLab's native OpenID Connect support. Validate VOS discovery, issuer consistency, token verification, client registration, callbacks, and certificate trust. Add a small authentication extension only if the VOS iframe Fastpath cannot establish the required GitLab session through native interfaces. |
-| Account mapping | Bind the identity provider and stable VOS `sub` to a GitLab account. Treat username and email as mutable profile fields. Verify first-login provisioning, missing or unverified email, account collisions, user switching, and logout. |
+| Authentication | The VOS OmniAuth strategy uses the PKCE Fastpath and online introspection/userinfo rather than relying on the platform's currently inconsistent OIDC issuer metadata. Validate client registration, callbacks, and certificate trust on the target device. |
+| Account mapping | Bind provider `vos` and the encoded stable subject to a native GitLab identity. Verify first-login provisioning, account collisions, user switching, and logout. Contact email and displayed name do not determine identity. |
 | Account lifecycle and permissions | Define administrator mapping, project and group access, and account disable/delete handling. Handle existing GitLab sessions, personal access tokens, and SSH keys separately from the VOS login session. |
 | Web entry | Integrate the VOS menu, iframe, Traefik routing, and application path. Validate static assets, redirects, cookies, CSRF, WebSockets, and frame policies. |
 | Git access | Publish correct external clone URLs and an SSH port that does not conflict with the host. Keep HTTPS clone/push and SSH authentication usable outside the browser login flow. |
-| Storage and recovery | Persist repositories, database state, uploads, LFS objects, configuration, and encryption keys. Start with GitLab's bundled database and Redis. Validate consistent backup and restore before changing shared-service dependencies. |
-| Packaging and runtime | Add the VOS manifest, Compose services, configuration, routes, storage declarations, and health checks. Verify image availability and resource requirements separately for AMD64 and ARM64. |
+| Storage and recovery | Persist repositories, uploads, LFS objects, configuration, and encryption keys in the selected directory. PostgreSQL uses a dedicated database and non-superuser role in PGV. Back up that database consistently with GitLab configuration and files. Redis is currently bundled. |
+| Packaging and runtime | The manifest, Compose services, configuration, routes, storage declarations, and health checks are defined. Verify image availability and resource requirements separately for AMD64 and ARM64. |
 | Upgrade and optional services | Follow GitLab's supported upgrade stops and database migration requirements. Define recovery behavior. Add Runner, Registry, Pages, and SMTP only when included in the release scope. |
 
 Before declaring the app integrated, verify two distinct VOS users, stable account binding,

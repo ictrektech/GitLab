@@ -1,0 +1,37 @@
+id: com.ictrek.gitlab
+name: {zh-CN: GitLab, en: GitLab}
+description:
+  zh-CN: GitLab 代码托管与协作，使用 VOS 身份登录并独立管理项目权限。
+  en: GitLab source hosting and collaboration with VOS sign-in and native project permissions.
+version: __APP_VERSION__
+author: ictrek
+category: [development]
+icon: icon.png
+arch: [amd64, arm64]
+frontend:
+  enabled: true
+  basePath: /app/com.ictrek.gitlab
+platform:
+  version: '>=3.2.0'
+dependencies:
+  apps:
+    - id: com.ictrek.pgv
+      version: latest
+      optional: false
+oauth2:
+  client:
+    scopes: [openid, profile, email]
+    grant_types: [authorization_code]
+    pkce_required: true
+profiles:
+  - name: amd
+    title: {zh-CN: AMD64 CPU, en: AMD64 CPU}
+    description: {zh-CN: 无需 GPU，适用于 AMD64 设备。, en: CPU-only GitLab for AMD64 devices.}
+    caps: {arch: amd64}
+    conflicts: [arm]
+  - name: arm
+    title: {zh-CN: ARM64 CPU, en: ARM64 CPU}
+    description: {zh-CN: 无需 GPU，适用于 ARM64 设备。, en: CPU-only GitLab for ARM64 devices.}
+    caps: {arch: arm64}
+    conflicts: [amd]
+require-profiles: true
