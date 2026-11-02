@@ -13,9 +13,13 @@ describe('workplan utils', () => {
       },
     );
 
+    it('uses the neutral icon color for canceled workplans', () => {
+      expect(getVariantColor('neutral')).toBe('var(--gl-status-neutral-icon-color)');
+    });
+
     describe('when the variant is unknown', () => {
-      it('falls back to the neutral color', () => {
-        expect(getVariantColor('unknown')).toBe(AGENT_STEP_PILL_VARIANTS.neutral);
+      it('falls back to the placeholder color', () => {
+        expect(getVariantColor('unknown')).toBe(AGENT_STEP_PILL_VARIANTS.placeholder);
       });
     });
   });

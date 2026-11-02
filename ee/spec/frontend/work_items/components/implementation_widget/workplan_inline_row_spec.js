@@ -285,6 +285,55 @@ describe('WorkplanInlineRow', () => {
       });
     });
 
+    describe('when generation failed without content', () => {
+      beforeEach(() => {
+        createComponent({ generationStatus: 'FAILED', hasContent: false, canUpdate: true });
+      });
+
+      it('offers Try again with the Create manually dropdown', () => {
+        expect(findButtonGroup().exists()).toBe(true);
+        expect(findRetryButton().text()).toBe('Try again');
+        expect(findDisclosureDropdown().props('items')).toMatchObject([
+          { text: 'Create manually' },
+        ]);
+      });
+
+      it('emits create-manually from the dropdown', async () => {
+        await findDisclosureDropdown().vm.$emit('action');
+
+        expect(wrapper.emitted('create-manually')).toHaveLength(1);
+      });
+    });
+
+    describe('when retrying a failed run', () => {
+      const reason = "Workplan generation isn't turned on for this project.";
+
+      beforeEach(() => {
+        createComponent({
+          generationStatus: 'FAILED',
+          hasContent: false,
+          canUpdate: true,
+          isFlowActionInFlight: true,
+          generationDisabledReason: reason,
+        });
+      });
+
+      it('keeps the retry loading and disabled, with the availability popover anchored to it', () => {
+        expect(findRetryButton().props()).toMatchObject({
+          loading: true,
+          disabled: true,
+          accessibleDisabled: true,
+        });
+        expect(wrapper.findComponent(WorkplanAvailabilityPopover).props()).toMatchObject({
+          reason,
+          target: expect.any(Function),
+        });
+        expect(wrapper.findComponent(WorkplanAvailabilityPopover).props('target')()).toBe(
+          findRetryButton().element,
+        );
+      });
+    });
+
     describe('when content exists', () => {
       beforeEach(() => {
         createComponent({
@@ -516,8 +565,8 @@ describe('WorkplanInlineRow', () => {
         createComponent({ hasContent: false });
       });
 
-      it('uses the neutral variant', () => {
-        expect(findWorkplanStatusBar().props('variant')).toBe('neutral');
+      it('uses the placeholder variant', () => {
+        expect(findWorkplanStatusBar().props('variant')).toBe('placeholder');
       });
     });
   });
@@ -529,7 +578,7 @@ describe('WorkplanInlineRow', () => {
       ${'a resumed run is writing a plan'}  | ${'GENERATING'}  | ${true}         | ${false}   | ${'Generating workplan...'} | ${'info'}
       ${'a run is waiting on the user'}     | ${'NEEDS_INPUT'} | ${false}        | ${false}   | ${'Awaiting input'}         | ${'warning'}
       ${'a run ended without a plan'}       | ${'FAILED'}      | ${false}        | ${false}   | ${'Generation failed'}      | ${'error'}
-      ${'a user canceled the run'}          | ${'CANCELED'}    | ${false}        | ${false}   | ${'Generation canceled'}    | ${'error'}
+      ${'a user canceled the run'}          | ${'CANCELED'}    | ${false}        | ${false}   | ${'Generation canceled'}    | ${'neutral'}
       ${'a run is writing over a plan'}     | ${'GENERATING'}  | ${false}        | ${true}    | ${'Generating workplan...'} | ${'info'}
       ${'a resumed run has a saved plan'}   | ${'GENERATING'}  | ${true}         | ${true}    | ${'Generating workplan...'} | ${'info'}
       ${'a run with a plan wants input'}    | ${'NEEDS_INPUT'} | ${false}        | ${true}    | ${'Awaiting input'}         | ${'warning'}
@@ -565,7 +614,7 @@ describe('WorkplanInlineRow', () => {
       });
 
       it(`${generate ? 'offers' : 'withholds'} the Generate action`, () => {
-        expect(findButtonGroup().exists()).toBe(generate);
+        expect(findGenerateButton().exists()).toBe(generate);
       });
 
       it(`${retry ? 'offers' : 'withholds'} Try again`, () => {

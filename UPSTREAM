@@ -1,7 +1,7 @@
 {
   "repository": "https://gitlab.com/gitlab-org/gitlab.git",
   "branch": "master",
-  "commit": "636156f5e68dcf5f882f0920f36a61682e47f548",
-  "tree": "8a9e37ef5d8aabc1696affecd7f3dee51448c985",
-  "snapshot_commit": "98d25739ad737478d876a53834848ef3739d9f7b"
+  "commit": "aa977f40bc0cae2b71b3e49c33577d1374ebe312",
+  "tree": "593f0fe521b06003704c9a0d91b458093df43df2",
+  "snapshot_commit": "ebf07fdafc16f6aa2c7933b242dde498875e832f"
 }

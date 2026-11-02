@@ -3,7 +3,7 @@ import { InternalEvents } from '~/tracking';
 import { AGENT_STEP_PILL_VARIANTS, READINESS_SCORE_MIN, READINESS_SCORE_MAX } from './constants';
 
 export const getVariantColor = (variant) =>
-  AGENT_STEP_PILL_VARIANTS[variant] ?? AGENT_STEP_PILL_VARIANTS.neutral;
+  AGENT_STEP_PILL_VARIANTS[variant] ?? AGENT_STEP_PILL_VARIANTS.placeholder;
 
 export const getAwaitingInputLabel = (count) =>
   sprintf(

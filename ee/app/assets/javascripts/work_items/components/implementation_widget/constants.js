@@ -55,7 +55,8 @@ export const AGENT_STEP_PILL_VARIANTS = {
   warning: 'var(--gl-status-warning-icon-color)',
   info: 'var(--gl-status-info-icon-color)',
   success: 'var(--gl-status-success-icon-color)',
-  neutral: 'var(--gl-status-neutral-background-color)',
+  placeholder: 'var(--gl-status-neutral-background-color)',
+  neutral: 'var(--gl-status-neutral-icon-color)',
 };
 
 // `generationStatus` values for the work item's latest `workplan/v1` flow.
