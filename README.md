@@ -1,122 +1,106 @@
-# GitLab
+## GitLab for VOS
 
-## Canonical source
+This repository contains GitLab source from the official
+[GitLab repository](https://gitlab.com/gitlab-org/gitlab), with tooling for VOS integration development.
+The initial commit contains the original source tree without the original commit history.
+License files and copyright notices remain in the source tree.
 
-The canonical source of GitLab where all development takes place is [hosted on GitLab.com](https://gitlab.com/gitlab-org/gitlab).
+### Current status
 
-If you wish to clone a copy of GitLab without proprietary code, you can use the read-only mirror of GitLab located at https://gitlab.com/gitlab-org/gitlab-foss/. However, please do not submit any issues and/or merge requests to that project.
+Source import, upstream synchronization tooling, and the VAI `apps/GitLab` submodule are in place.
+VOS authentication, account mapping, application packaging, and device validation are not implemented yet.
+This repository does not currently provide an installable VOS app release.
 
-## Free trial
+The original upstream introduction and installation references are retained in
+[README-legacy.md](README-legacy.md).
+This README describes maintenance of the VOS fork.
 
-You can request a free trial of GitLab Ultimate [on our website](https://about.gitlab.com/free-trial/).
+`UPSTREAM` records the source URL, branch, original commit ID, source tree ID, and local
+snapshot commit used as the merge baseline.
+The default development branch is `main`.
 
-## Open source software to collaborate on code
+### VOS integration plan
 
-To see how GitLab looks please see the [features page on our website](https://about.gitlab.com/features/).
+The initial design uses one shared GitLab instance with GitLab's native users, groups,
+projects, and permissions.
+VOS supplies platform identity, the navigation entry, and application lifecycle management.
+The following work remains subject to implementation and validation:
 
-- Manage Git repositories with fine grained access controls that keep your code secure
-- Perform code reviews and enhance collaboration with merge requests
-- Complete continuous integration (CI) and continuous deployment/delivery (CD) pipelines to build, test, and deploy your applications
-- Each project can also have an issue tracker, issue board, and a wiki
-- Used by more than 100,000 organizations, GitLab is the most popular solution to manage Git repositories on-premises
-- Open-core, most of the code is MIT with the files in `/ee` being proprietary but source available and open for contributions.
+| Area | Planned integration |
+| --- | --- |
+| Authentication | Start with GitLab's native OpenID Connect support. Validate VOS discovery, issuer consistency, token verification, client registration, callbacks, and certificate trust. Add a small authentication extension only if the VOS iframe Fastpath cannot establish the required GitLab session through native interfaces. |
+| Account mapping | Bind the identity provider and stable VOS `sub` to a GitLab account. Treat username and email as mutable profile fields. Verify first-login provisioning, missing or unverified email, account collisions, user switching, and logout. |
+| Account lifecycle and permissions | Define administrator mapping, project and group access, and account disable/delete handling. Handle existing GitLab sessions, personal access tokens, and SSH keys separately from the VOS login session. |
+| Web entry | Integrate the VOS menu, iframe, Traefik routing, and application path. Validate static assets, redirects, cookies, CSRF, WebSockets, and frame policies. |
+| Git access | Publish correct external clone URLs and an SSH port that does not conflict with the host. Keep HTTPS clone/push and SSH authentication usable outside the browser login flow. |
+| Storage and recovery | Persist repositories, database state, uploads, LFS objects, configuration, and encryption keys. Start with GitLab's bundled database and Redis. Validate consistent backup and restore before changing shared-service dependencies. |
+| Packaging and runtime | Add the VOS manifest, Compose services, configuration, routes, storage declarations, and health checks. Verify image availability and resource requirements separately for AMD64 and ARM64. |
+| Upgrade and optional services | Follow GitLab's supported upgrade stops and database migration requirements. Define recovery behavior. Add Runner, Registry, Pages, and SMTP only when included in the release scope. |
 
-## Editions
+Before declaring the app integrated, verify two distinct VOS users, stable account binding,
+private-project access controls, HTTPS and SSH clone/push, restart persistence, and account
+disable behavior on a target VOS device.
+Validate backup/restore and the supported upgrade path separately from a successful initial install.
 
-There are three editions of GitLab:
+### Update source
 
-- GitLab Community Edition (CE) is available freely under the MIT Expat license.
-- GitLab Enterprise Edition (EE) includes [extra features](https://about.gitlab.com/pricing/#compare-options) that are more useful for organizations with more than 100 users. To use EE and get official support please [become a subscriber](https://about.gitlab.com/pricing/).
-- JiHu Edition (JH) tailored specifically for the [Chinese market](https://about.gitlab.cn/).
-
-## Licensing
-
-See the [LICENSE](LICENSE) file for licensing information as it pertains to
-files in this repository.
-
-## Hiring
-
-We are hiring developers, support engineers, and production engineers all the time, please see our [jobs page](https://about.gitlab.com/jobs/).
-
-## Website
-
-On [about.gitlab.com](https://about.gitlab.com/) you can find more information about:
-
-- [Subscriptions](https://about.gitlab.com/pricing/)
-- [Professional Services](https://about.gitlab.com/services/)
-- [Community](https://about.gitlab.com/community/)
-- [Hosted GitLab.com](https://about.gitlab.com/gitlab-com/) use GitLab as a free service
-- [GitLab Enterprise Edition](https://about.gitlab.com/features/#enterprise) with additional features aimed at larger organizations.
-- [GitLab CI](https://about.gitlab.com/solutions/continuous-integration/) a continuous integration (CI) server that is easy to integrate with GitLab.
-
-## Requirements
-
-Please see the [requirements documentation](doc/install/requirements.md) for system requirements and more information about the supported operating systems.
-
-## Installation
-
-The recommended way to install GitLab is with the [Omnibus packages](https://docs.gitlab.com/install/package/) on our package server.
-Compared to [a self-compiled installation](https://docs.gitlab.com/install/self_compiled/), this is faster and less error prone.
-Just select your operating system, download the respective package (Debian or RPM) and install it using the system's package manager.
-
-For more information about other installation methods, see [install GitLab](https://about.gitlab.com/install/).
-
-## Contributing
-
-GitLab is an open source project and we are very happy to accept community contributions. Please refer to the [`CONTRIBUTING.md`](CONTRIBUTING.md) file for more details.
-
-## Install a development environment
-
-To work on GitLab itself, we recommend setting up your development environment with [the GitLab Development Kit (GDK)](https://gitlab.com/gitlab-org/gitlab-development-kit).
-If you do not use GDK, you need to [install and configure all the dependencies yourself](https://docs.gitlab.com/install/installation/), this is a lot of work and error prone.
-One small thing you also have to do when installing it yourself is to copy the example development Puma configuration file:
+Commit or stash local changes, then run from the repository root:
 
 ```shell
-cp config/puma.example.development.rb config/puma.rb
+python3 scripts/vos_sync_upstream.py --check
+python3 scripts/vos_sync_upstream.py
 ```
 
-Instructions on how to start GitLab and how to run the tests can be found in the [getting started section of the GitLab Development Kit](https://gitlab.com/gitlab-org/gitlab-development-kit#getting-started).
+The first command checks for an update without changing the source or baseline.
+The second command fetches the latest upstream source with `--depth=1` and `--no-tags`,
+creates a source snapshot whose parent is the previous snapshot, and merges that snapshot
+into the current branch.
+On success, the script commits the merge and the updated `UPSTREAM` file together.
+The script does not push, install dependencies, build, or deploy GitLab.
 
-## Software stack
+Each update retains one upstream source snapshot and a local merge commit.
+Individual upstream commits between snapshots are not imported.
+The original upstream commit IDs remain in `UPSTREAM` and snapshot commit messages.
+Use those IDs to inspect detailed upstream history on GitLab.com.
+Do not use `git pull upstream`, `--unshallow`, or unrestricted upstream history fetches.
+Use ordinary `git pull --ff-only origin main` to receive changes already published in this fork.
 
-GitLab is a Ruby on Rails application that runs on the following software:
+Fetches use temporary directories under `~/dev/build/gitlab-upstream` and remove those
+directories when the command exits.
+Set `VOS_UPSTREAM_BUILD_ROOT` to change that location.
+Python 3 and Git are required on macOS or Linux.
+The script supports fresh clones and execution from an initialized VAI submodule.
 
-- Ubuntu/Debian/CentOS/RHEL/OpenSUSE
-- Ruby (MRI) 3.3.10
-- Git 2.33+
-- Redis 6.0+
-- PostgreSQL 16.5+
+### Resolve conflicts
 
-For more information please see the [architecture](https://docs.gitlab.com/ee/development/architecture.html) and [requirements](https://docs.gitlab.com/ee/install/requirements.html) documentation.
+If an update conflicts with local changes, the script leaves a Git merge in progress.
+Resolve each conflict and stage only the intended resolutions:
 
-## UX design
+```shell
+git status
+git add <resolved-files>
+python3 scripts/vos_sync_upstream.py --continue
+```
 
-Please adhere to the [UX Guide](https://design.gitlab.com/) when creating designs and implementing code.
+Use the script to finish the merge. Do not run `git commit` separately or edit `UPSTREAM`.
+Upstream changes to `README.md` can conflict with this fork's replacement homepage.
+Merge the upstream documentation changes into `README-legacy.md`, preserve the VOS homepage
+in `README.md`, and stage both files before continuing.
+To cancel the update and preserve the previous baseline:
 
-## Third-party applications
+```shell
+python3 scripts/vos_sync_upstream.py --abort
+```
 
-There are a lot of [third-party applications integrating with GitLab](https://about.gitlab.com/applications/). These include GUI Git clients, mobile applications and API wrappers for various languages.
+### Review and deliver
 
-## GitLab release cycle
+Review the merge, run checks appropriate to the changed code on an approved build host,
+and push the GitLab branch before committing and pushing the VAI submodule reference.
+No build or test command should write generated files into the source checkout.
 
-For more information about the release process see the [release documentation](https://gitlab.com/gitlab-org/release-tools/blob/master/README.md).
+The updater's repository tests use temporary local Git repositories under
+`~/dev/build/gitlab-upstream-tests` and require no network or GitLab services:
 
-## Upgrading
-
-For upgrading information please see our [update page](https://about.gitlab.com/update/).
-
-## Documentation
-
-All documentation can be found on <https://docs.gitlab.com>.
-
-## Education
-
-Get up to speed quickly with comprehensive learning resources at [GitLab University](https://university.gitlab.com).
-
-## Getting help
-
-Please see [Getting help for GitLab](https://about.gitlab.com/getting-help/) on our website for the many options to get help.
-
-## Why should I use GitLab?
-
-Read [why our customers choose GitLab](https://about.gitlab.com/why-gitlab/).
+```shell
+python3 scripts/tests/test_vos_sync_upstream.py
+```

@@ -14,7 +14,9 @@ Commit or stash local changes first. For conflicts, resolve and stage the affect
 then run the script with `--continue`. Use `--abort` to cancel the pending update.
 Never advance `UPSTREAM` manually or discard local VOS changes to resolve a conflict.
 Review and test the result before pushing, then update the VAI submodule reference.
-See [README.vos.md](README.vos.md) for checks, commands, and the snapshot history model.
+See [README.md](README.md) for checks, commands, and the snapshot history model.
+For upstream README conflicts, preserve the VOS `README.md` and merge upstream documentation
+changes into `README-legacy.md` before staging the resolution.
 
 ## Local Overrides
 
