@@ -1,0 +1,10 @@
+---
+name: ai_governance_per_tab_permissions
+description: Replaces the page-wide AI Governance gate with per-tab permission checks
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/630817
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/264808
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636543
+milestone: '19.6'
+group: group::ai governance
+type: gitlab_com_derisk
+default_enabled: false

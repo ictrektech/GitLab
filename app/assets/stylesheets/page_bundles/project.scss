@@ -1,0 +1,147 @@
+@import 'page_bundles/mixins_and_variables_and_functions';
+
+.project-repo-buttons {
+  .download-button {
+    @include gl-container-width-down(lg, panel) {
+      margin-left: 0;
+    }
+  }
+
+  .project-code-holder {
+    display: inline-block;
+    margin: $gl-padding 0 0;
+
+    input {
+      height: $input-height;
+    }
+  }
+
+  .clone-options-dropdown {
+    min-width: 240px;
+
+    .dropdown-menu-inner-content {
+      min-width: 320px;
+    }
+  }
+
+  .mobile-git-clone {
+    margin-top: $gl-padding-8;
+  }
+}
+
+.project-stats,
+.project-buttons {
+  .scrolling-tabs-container {
+    .scrolling-tabs {
+      margin-top: $gl-padding-8;
+      margin-bottom: $gl-padding-8 - $browser-scrollbar-size;
+      padding-bottom: $browser-scrollbar-size;
+      flex-wrap: wrap;
+      border-bottom: 0;
+    }
+
+    .fade-left,
+    .fade-right {
+      top: 0;
+      height: calc(100% - #{$browser-scrollbar-size});
+
+      svg {
+        top: 50%;
+        margin-top: -$gl-padding-8;
+      }
+    }
+
+    .nav {
+      flex-basis: 100%;
+
+      + .nav {
+        margin: $gl-padding-8 0;
+      }
+    }
+
+    @include gl-container-width-down(lg, panel) {
+      flex-direction: column;
+
+      .nav {
+        flex-wrap: nowrap;
+      }
+
+      .nav:first-child {
+        margin-right: $gl-padding-8;
+      }
+    }
+  }
+
+  .nav {
+    .stat-text,
+    .stat-link {
+      padding: $gl-btn-vert-padding;
+      background-color: transparent;
+      font-size: $gl-font-size;
+      line-height: $gl-btn-line-height;
+      @apply gl-text-subtle;
+      white-space: pre-wrap;
+    }
+
+    .stat-link {
+      border-bottom: 0;
+      @apply gl-text-default;
+
+      &:hover,
+      &:focus-visible {
+        text-decoration: underline;
+      }
+    }
+
+    .btn {
+      padding: $gl-btn-vert-padding $gl-btn-padding;
+      line-height: $gl-btn-line-height;
+
+      .icon {
+        top: 0;
+      }
+    }
+  }
+}
+
+.git-empty {
+  margin-bottom: 7px;
+
+  h5 {
+    @apply gl-text-heading;
+  }
+}
+
+.project-page-sidebar {
+  @include gl-container-width-up(md, panel) {
+    .nav {
+      > li {
+        width: 100%;
+      }
+
+      .btn {
+        justify-content: flex-start;
+        box-shadow: none;
+      }
+    }
+
+    mark {
+      @include str-highlighted;
+    }
+  }
+}
+
+// Folder navigation hides the sidebar via `.js-show-on-project-root`, see repository/pages/index.vue
+// stylelint-disable-next-line gitlab/no-has -- scoped to the project home layout root
+.project-home-layout:has(.project-home-sidebar.hidden) {
+  /* stylelint-disable gitlab/no-gl-class -- collapses the DetailLayout sidebar column */
+  > header,
+  .gl-detail-layout-sidebar {
+    display: none;
+  }
+
+  .gl-detail-layout-container {
+    display: block;
+  }
+  /* stylelint-enable gitlab/no-gl-class */
+}

@@ -1,0 +1,10 @@
+---
+name: dap_openai_non_strict_tools
+description: Sends tools to OpenAI models with strict mode off in Duo Agent Platform, so GPT no longer fills every optional argument with a made-up default
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/621520
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/261800
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634197
+milestone: '19.6'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

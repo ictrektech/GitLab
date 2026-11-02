@@ -1,0 +1,11 @@
+---
+name: dap_reference_repository
+description: Clones Duo Agent Platform sessions from a reference repository in the
+  session image when agent-config sets git_strategy.reference_repository_path
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/628053
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/262094
+rollout_issue_url:
+milestone: '19.5'
+group: group::agent execution
+type: wip
+default_enabled: false

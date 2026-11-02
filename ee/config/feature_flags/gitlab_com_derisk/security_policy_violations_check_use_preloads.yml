@@ -1,0 +1,11 @@
+---
+name: security_policy_violations_check_use_preloads
+description: Answer the security policy violations mergeability check from preloaded
+  violations and skip bypass lookups for projects without bypass settings
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631601
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263467
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634666
+milestone: '19.6'
+group: group::code review
+type: gitlab_com_derisk
+default_enabled: false

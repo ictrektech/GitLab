@@ -1,0 +1,10 @@
+---
+name: rate_limiter_endpoint_block_counter
+description: Count rack rate limiter blocks by the endpoint the request was for and the rule that blocked it
+feature_issue_url: https://gitlab.com/gitlab-com/gl-infra/production-engineering/-/work_items/30224
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/266199
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636996
+milestone: '19.6'
+group: group::networking and incident management
+type: gitlab_com_derisk
+default_enabled: false

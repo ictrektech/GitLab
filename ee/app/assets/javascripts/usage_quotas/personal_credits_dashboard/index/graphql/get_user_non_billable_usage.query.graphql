@@ -1,0 +1,31 @@
+# @feature_category: consumables_cost_management
+
+# Separate from the billable queries so a failure here never blanks the billed
+# dashboard. Called with only the namespace path for the billing-period card and
+# with the filters for the range-scoped cards and chart.
+query getUserNonBillableUsage(
+  $namespacePath: ID!
+  $startDate: ISO8601Date
+  $endDate: ISO8601Date
+  $flowTypes: [String!]
+) {
+  currentUser {
+    id
+    creditsUsage(
+      namespacePath: $namespacePath
+      startDate: $startDate
+      endDate: $endDate
+      flowTypes: $flowTypes
+    ) {
+      nonBillableUsage @gl_introduced(version: "19.6.0") {
+        productId
+        skipReason
+        totalCreditsUsed
+        dailyUsage {
+          date
+          creditsUsed
+        }
+      }
+    }
+  }
+}

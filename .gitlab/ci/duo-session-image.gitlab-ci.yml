@@ -1,0 +1,37 @@
+# Weekly build of the Duo Agent Platform session image.
+#
+# The image is $DEFAULT_CI_IMAGE plus a bare copy of the default branch at /opt/duo/ref.git.
+# A session whose agent-config sets git_strategy.reference_repository_path to that path fetches
+# only the commits made since the build, instead of cloning the whole repository.
+#
+# Run it from a pipeline schedule on the default branch with:
+#   SCHEDULE_TYPE=duo-session-image
+#
+# After a $DEFAULT_CI_IMAGE change on the default branch, play the schedule so sessions
+# get the new toolchain without waiting for the next weekly run.
+
+build-duo-session-image:
+  extends:
+    - .base-image-build-buildx
+    - .duo-session-image:rules:scheduled
+  stage: build-images
+  needs: []
+  variables:
+    DUO_SESSION_IMAGE: "${CI_REGISTRY_IMAGE}/duo-session"
+  script:
+    - |
+      docker buildx build --push \
+        --file .gitlab/duo/session-image.Dockerfile \
+        --build-arg BASE_IMAGE="${DEFAULT_CI_IMAGE}" \
+        --build-arg REPOSITORY_URL="${CI_SERVER_URL}/${CI_PROJECT_PATH}.git" \
+        --build-arg COMMIT_SHA="${CI_COMMIT_SHA}" \
+        --tag "${DUO_SESSION_IMAGE}:latest" \
+        .gitlab/duo
+
+build-duo-session-image-report-failure:
+  extends: .duo-session-image:rules:scheduled
+  stage: notify
+  needs: [build-duo-session-image]
+  when: on_failure
+  script:
+    - scripts/slack f_runner-execution "\`build-duo-session-image\` failed! See ${CI_PIPELINE_URL}" ci_failing "GitLab Bot"

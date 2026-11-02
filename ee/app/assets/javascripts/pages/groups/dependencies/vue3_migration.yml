@@ -1,0 +1,4 @@
+status: rollout
+feature_flag: vue3_migrate_dependency_list
+group: group::vulnerability management
+migration_issue: https://gitlab.com/gitlab-org/gitlab/-/work_items/607915

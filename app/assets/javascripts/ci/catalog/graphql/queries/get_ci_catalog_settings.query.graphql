@@ -1,0 +1,10 @@
+# @feature_category: pipeline_composition
+
+query getCiCatalogSettings($fullPath: ID!) {
+  project(fullPath: $fullPath) {
+    id
+    isCatalogResource
+    isPublished
+    description
+  }
+}

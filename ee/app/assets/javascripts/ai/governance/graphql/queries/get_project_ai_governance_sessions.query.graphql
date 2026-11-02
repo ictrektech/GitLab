@@ -1,0 +1,21 @@
+# @feature_category: compliance_management
+query getProjectAiGovernanceSessions(
+  $projectFullPath: ID!
+  $first: Int
+  $agentClass: AiGovernanceAgentClass
+) {
+  project(fullPath: $projectFullPath) {
+    id
+    aiGovernanceSessions(first: $first, agentClass: $agentClass) {
+      nodes {
+        id
+        sessionId
+        flowType
+        source
+        agentType
+        sessionStartedAt
+        auditEventsCount
+      }
+    }
+  }
+}

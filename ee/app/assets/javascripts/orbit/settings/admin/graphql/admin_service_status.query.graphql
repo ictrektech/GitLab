@@ -1,0 +1,13 @@
+# @feature_category: knowledge_graph
+query getOrbitAdminServiceStatus {
+  orbit @gl_introduced(version: "19.4.0") {
+    serviceStatus @gl_introduced(version: "19.4.0") {
+      state
+      version
+      components {
+        name
+        state
+      }
+    }
+  }
+}

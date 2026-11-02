@@ -1,0 +1,40 @@
+query getAiNamespaceFeatureSettings($groupId: GroupID!) {
+  aiModelSelectionNamespaceSettings(groupId: $groupId) {
+    nodes {
+      feature
+      title
+      mainFeature
+      selectedModel {
+        ref
+        name
+        modelProvider
+      }
+      defaultModel {
+        ref
+        name
+        modelProvider
+        modelDescription
+        costIndicator
+      }
+      selectableModels {
+        ref
+        name
+        modelProvider
+        modelDescription
+        costIndicator
+      }
+      allowList {
+        enabled
+        models {
+          nodes {
+            ref
+            name
+            modelDescription
+            costIndicator
+            allowed
+          }
+        }
+      }
+    }
+  }
+}

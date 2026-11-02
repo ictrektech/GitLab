@@ -1,0 +1,105 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe 'Export work items', feature_category: :team_planning do
+  include GraphqlHelpers
+
+  let_it_be(:project) { create(:project) }
+  let_it_be(:guest) { create(:user, guest_of: project) }
+  let_it_be(:work_item) { create(:work_item, project: project) }
+
+  let(:input) { { 'projectPath' => project.full_path } }
+  let(:mutation) { graphql_mutation(:workItemsCsvExport, input) }
+  let(:mutation_response) { graphql_mutation_response(:work_items_csv_export) }
+
+  context 'when user has permissions to export work items' do
+    let(:current_user) { guest }
+    let(:input) do
+      super().merge(
+        'selectedFields' => %w[TITLE DESCRIPTION AUTHOR TYPE AUTHOR_USERNAME CREATED_AT],
+        'authorUsername' => 'admin',
+        'iids' => [work_item.iid.to_s],
+        'state' => 'opened',
+        'types' => 'TASK',
+        'search' => 'any',
+        'in' => 'TITLE'
+      )
+    end
+
+    it 'schedules export job with given arguments', :aggregate_failures do
+      expected_arguments = {
+        selected_fields: ['title', 'description', 'author', 'type', 'author username', 'created at'],
+        author_username: 'admin',
+        iids: [work_item.iid.to_s],
+        state: 'opened',
+        issue_types: ['task'],
+        search: 'any',
+        in: 'title'
+      }
+
+      expect(IssuableExportCsvWorker)
+        .to receive(:perform_async).with(:work_item, current_user.id, project.id, expected_arguments)
+
+      post_graphql_mutation(mutation, current_user: current_user)
+
+      expect(mutation_response['message']).to eq(
+        'Your CSV export request has succeeded. The result will be emailed to ' \
+          "#{guest.notification_email_or_default}."
+      )
+      expect(mutation_response['errors']).to be_empty
+    end
+
+    context 'with relative date filters' do
+      let(:input) do
+        {
+          'projectPath' => project.full_path,
+          'relativeDateFilters' => {
+            'createdAfter' => { 'amount' => -7, 'unit' => :DAY },
+            'dueBefore' => { 'amount' => 2, 'unit' => :WEEK }
+          }
+        }
+      end
+
+      it 'schedules the export job with the resolved dates', :freeze_time do
+        expect(IssuableExportCsvWorker).to receive(:perform_async).with(
+          :work_item, current_user.id, project.id,
+          { created_after: 7.days.ago.beginning_of_day, due_before: 2.weeks.from_now.to_date }
+        )
+
+        post_graphql_mutation(mutation, current_user: current_user)
+
+        expect(mutation_response['errors']).to be_empty
+      end
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_work_item do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+    end
+
+    it_behaves_like 'authorizing granular token permissions for GraphQL', :read_work_item do
+      let(:user) { current_user }
+      let(:boundary_object) { project }
+      let(:mutation) { graphql_mutation(:work_item_export, input) }
+      let(:request) { post_graphql_mutation(mutation, token: { personal_access_token: pat }) }
+    end
+  end
+
+  context 'with the CSV export rate limit' do
+    let_it_be(:other_guest) { create(:user, guest_of: project) }
+
+    let(:current_user) { guest }
+
+    it_behaves_like 'rate limited endpoint', rate_limit_key: :issuable_csv_export, graphql: true do
+      def request
+        post_graphql_mutation(mutation, current_user: guest)
+      end
+
+      def request_with_second_scope
+        post_graphql_mutation(mutation, current_user: other_guest)
+      end
+    end
+  end
+end

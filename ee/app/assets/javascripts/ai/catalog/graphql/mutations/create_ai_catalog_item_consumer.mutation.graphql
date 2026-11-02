@@ -1,0 +1,19 @@
+# @feature_category: ai_catalog_curation
+mutation createAiCatalogItemConsumer($input: AiCatalogItemConsumerCreateInput!) {
+  aiCatalogItemConsumerCreate(input: $input) {
+    errors
+    warnings @gl_introduced(version: "19.5.0")
+    itemConsumer {
+      id
+      webPath
+      project {
+        id
+        name
+      }
+      group {
+        id
+        name
+      }
+    }
+  }
+}

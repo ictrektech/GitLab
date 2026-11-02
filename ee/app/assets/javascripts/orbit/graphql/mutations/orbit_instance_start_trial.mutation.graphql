@@ -1,0 +1,6 @@
+# @feature_category: knowledge_graph
+mutation orbitInstanceStartTrial {
+  orbitInstanceStartTrial(input: {}) {
+    errors
+  }
+}

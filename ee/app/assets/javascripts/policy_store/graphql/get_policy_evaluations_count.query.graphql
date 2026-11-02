@@ -1,0 +1,19 @@
+# @feature_category: security_policy_management
+
+# The field's evaluatedAfter and the count's limit are optional. Requiring them
+# here turns a caller that forgets the reporting window or the cap into a query
+# error rather than a silent all-time, exact count.
+query getPolicyEvaluationsCount(
+  $id: OrganizationsOrganizationID!
+  $evaluatedAfter: Time!
+  $limit: Int!
+) {
+  organization(id: $id) {
+    id
+    policyStore {
+      policyEvaluations(evaluatedAfter: $evaluatedAfter, first: 0) {
+        count(limit: $limit)
+      }
+    }
+  }
+}

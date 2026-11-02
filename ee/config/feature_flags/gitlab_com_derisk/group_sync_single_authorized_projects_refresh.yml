@@ -1,0 +1,10 @@
+---
+name: group_sync_single_authorized_projects_refresh
+description: When enabled, Groups::SyncService refreshes a user's project authorizations once per sync instead of once per changed membership, at medium priority with no delay when the sync only added memberships
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/625211
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/258783
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631558
+milestone: '19.5'
+group: group::authorization
+type: gitlab_com_derisk
+default_enabled: false

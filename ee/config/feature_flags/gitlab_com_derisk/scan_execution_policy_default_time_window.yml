@@ -1,0 +1,10 @@
+---
+name: scan_execution_policy_default_time_window
+description: Applies a default time_window to scheduled scan execution policy rules that do not define one.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631141
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/258280
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636033
+milestone: '19.6'
+group: group::policy management
+type: gitlab_com_derisk
+default_enabled: false

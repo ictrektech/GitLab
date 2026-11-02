@@ -1,0 +1,28 @@
+# @feature_category: security_policy_management
+#import "./govern_policy.fragment.graphql"
+
+query getPolicyStorePolicies(
+  $id: OrganizationsOrganizationID!
+  $ids: [Int!]
+  $first: Int
+  $after: String
+) {
+  organization(id: $id) {
+    id
+    policyStore {
+      policies(ids: $ids, first: $first, after: $after) {
+        nodes {
+          ...GovernPolicy
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+      triggers {
+        id
+        name
+      }
+    }
+  }
+}

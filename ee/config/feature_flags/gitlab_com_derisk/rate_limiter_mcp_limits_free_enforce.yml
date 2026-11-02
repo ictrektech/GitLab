@@ -1,0 +1,10 @@
+---
+name: rate_limiter_mcp_limits_free_enforce
+description: Reject MCP Server requests from free plan requesters that exceed the per-plan limit
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/issues/629883
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/257085
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/issues/631324
+milestone: '19.5'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

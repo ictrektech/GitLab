@@ -1,0 +1,31 @@
+# @feature_category: dap_code_review
+query getMergeRequestRiskAssessment($projectPath: ID!, $iid: String!) {
+  project(fullPath: $projectPath) {
+    id
+    duoWorkflowStatusCheck {
+      createDuoWorkflowForCiAllowed
+    }
+    mergeRequest(iid: $iid) {
+      id
+      sourceBranch
+      riskAssessment {
+        status
+        riskTier
+        confidenceTier
+        rationale
+        stale
+        duoWorkflowId
+        contributingSignals {
+          signal
+          label
+          contribution
+          detail
+        }
+        missingSignals {
+          signal
+          label
+        }
+      }
+    }
+  }
+}

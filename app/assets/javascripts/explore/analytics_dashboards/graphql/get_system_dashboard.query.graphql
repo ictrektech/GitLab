@@ -1,0 +1,12 @@
+# @feature_category: custom_dashboards_foundation
+query getSystemDashboard($slug: String!) {
+  customSystemDashboard(slug: $slug) {
+    id
+    name
+    description
+    config
+    system
+    slug
+    errors @gl_introduced(version: "19.6.0")
+  }
+}

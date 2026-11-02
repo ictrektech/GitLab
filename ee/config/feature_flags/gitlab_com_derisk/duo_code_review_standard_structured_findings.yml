@@ -1,0 +1,11 @@
+---
+name: duo_code_review_standard_structured_findings
+description: Pin Duo Code Review to the code_review 4.0.0 flow, which returns structured
+  findings through the code_review_findings schema
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/630626
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/261961
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/633674
+milestone: '19.6'
+group: group::code review
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,22 @@
+# @feature_category: dap_triggers
+
+query getAutomationRunStats($projectPath: ID!, $id: AiFlowTriggerID!) {
+  project(fullPath: $projectPath) {
+    id
+    aiFlowTriggers(ids: [$id]) {
+      nodes {
+        id
+        runStats @gl_introduced(version: "19.6.0") {
+          totalRuns
+          finishedRuns
+          failedRuns
+          medianDurationSeconds
+          dailyVolume {
+            date
+            runs
+          }
+        }
+      }
+    }
+  }
+}

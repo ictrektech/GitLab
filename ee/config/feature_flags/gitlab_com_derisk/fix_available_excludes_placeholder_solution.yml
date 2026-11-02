@@ -1,0 +1,10 @@
+---
+name: fix_available_excludes_placeholder_solution
+description: Treat scanner placeholder solutions ("Unfortunately, there is no solution available") as no fix for approval policy fix_available filters
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/612864
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/261500
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/633412
+milestone: '19.6'
+group: group::policy management
+type: gitlab_com_derisk
+default_enabled: false

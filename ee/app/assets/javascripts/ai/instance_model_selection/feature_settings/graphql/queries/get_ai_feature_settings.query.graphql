@@ -1,0 +1,58 @@
+query getAiFeatureSetting {
+  aiFeatureSettings {
+    nodes {
+      feature
+      title
+      mainFeature
+      provider
+      releaseState
+      selfHostedModel {
+        id
+        name
+        releaseState
+      }
+      defaultGitlabModel {
+        name
+        ref
+        modelProvider
+        modelDescription
+        costIndicator
+      }
+      gitlabModel {
+        name
+        ref
+        modelProvider
+      }
+      validModels {
+        nodes {
+          id
+          name
+          model
+          modelDisplayName
+          releaseState
+        }
+      }
+      validGitlabModels {
+        nodes {
+          name
+          ref
+          modelProvider
+          modelDescription
+          costIndicator
+        }
+      }
+      allowList {
+        enabled
+        models {
+          nodes {
+            ref
+            name
+            modelDescription
+            costIndicator
+            allowed
+          }
+        }
+      }
+    }
+  }
+}

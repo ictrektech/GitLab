@@ -1,0 +1,25 @@
+fragment AiUserMetricItem on AiUserMetrics {
+  user {
+    id
+    name
+    avatarUrl
+    username
+    webUrl
+    lastDuoActivityOn
+  }
+  codeSuggestions {
+    codeSuggestionAcceptedInIdeEventCount
+    codeSuggestionShownInIdeEventCount
+  }
+  codeReview {
+    requestReviewDuoCodeReviewOnMrByAuthorEventCount
+    reactThumbsDownOnDuoCodeReviewCommentEventCount
+    reactThumbsUpOnDuoCodeReviewCommentEventCount
+  }
+  troubleshootJob {
+    troubleshootJobEventCount
+  }
+  codeSuggestionsAcceptedCount
+  duoChatInteractionsCount
+  totalEventCount
+}

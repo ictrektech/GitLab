@@ -1,0 +1,11 @@
+fragment MrAiOverviewMilestone on MergeRequest {
+  id
+  milestone {
+    id
+    title
+    webPath
+    startDate
+    dueDate
+    expired
+  }
+}

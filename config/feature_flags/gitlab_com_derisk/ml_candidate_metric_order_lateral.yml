@@ -1,0 +1,10 @@
+---
+name: ml_candidate_metric_order_lateral
+description: Order ML candidates by a metric with a LATERAL lookup of the latest value per candidate
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635038
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263900
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635115
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

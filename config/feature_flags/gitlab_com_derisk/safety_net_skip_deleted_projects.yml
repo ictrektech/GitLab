@@ -1,0 +1,10 @@
+---
+name: safety_net_skip_deleted_projects
+description: Leave rows for deleted projects out of permission safety-net refreshes, since loose-foreign-key cleanup removes them
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636638
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265680
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636620
+milestone: '19.6'
+type: gitlab_com_derisk
+group: group::authorization
+default_enabled: false

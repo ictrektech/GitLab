@@ -1,0 +1,29 @@
+query getAiChatAvailableModels(
+  $rootNamespaceId: GroupID
+  $namespaceId: GroupID
+  $projectId: ProjectID
+) {
+  aiChatAvailableModels(
+    rootNamespaceId: $rootNamespaceId
+    namespaceId: $namespaceId
+    projectId: $projectId
+  ) {
+    defaultModel {
+      name
+      ref
+      modelProvider
+    }
+    selectableModels {
+      name
+      ref
+      modelProvider
+      modelDescription
+      costIndicator
+      requiresPaidCredits @gl_introduced(version: "19.5.0")
+    }
+    pinnedModel {
+      name
+      ref
+    }
+  }
+}

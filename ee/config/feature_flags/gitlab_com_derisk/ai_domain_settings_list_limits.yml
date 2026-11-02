@@ -1,0 +1,10 @@
+---
+name: ai_domain_settings_list_limits
+description: Limit AI domain allow and deny lists to 500 domains of at most 253 characters each.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636069
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265947
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/637097
+milestone: '19.6'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

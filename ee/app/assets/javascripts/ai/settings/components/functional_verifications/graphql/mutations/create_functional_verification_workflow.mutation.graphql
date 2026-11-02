@@ -1,0 +1,11 @@
+# @feature_category: duo_agent_platform
+
+mutation createFunctionalVerificationWorkflow(
+  $checkType: FunctionalVerificationCheckType!
+  $fullPath: ID!
+) {
+  createFunctionalVerificationWorkflow(input: { checkType: $checkType, fullPath: $fullPath }) {
+    workflowId
+    errors
+  }
+}

@@ -1,0 +1,10 @@
+---
+name: restrict_credit_gated_models_on_trials
+description: Prevent trials without purchased GitLab Credits from using credit-gated LLMs in GitLab Duo Agentic Chat
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/612358
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/256876
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/630356
+milestone: '19.5'
+group: group::abuse engineering
+type: wip
+default_enabled: false

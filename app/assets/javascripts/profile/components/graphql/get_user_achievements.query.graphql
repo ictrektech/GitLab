@@ -1,0 +1,26 @@
+query getUserAchievements($id: UserID!) {
+  user(id: $id) {
+    id
+    achievementCounts @gl_introduced(version: "19.6.0") {
+      nodes {
+        count
+        firstAwardedAt
+        achievement {
+          id
+          name
+          description
+          avatarUrl
+          namespace {
+            id
+            fullPath
+            achievementsPath
+          }
+        }
+        latestUserAchievement {
+          id
+          awardMessageHtml
+        }
+      }
+    }
+  }
+}

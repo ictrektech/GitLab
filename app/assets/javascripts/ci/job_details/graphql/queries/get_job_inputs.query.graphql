@@ -1,0 +1,23 @@
+# @feature_category: pipeline_composition
+
+query getJobInputs($fullPath: ID!, $id: JobID!) {
+  project(fullPath: $fullPath) {
+    id
+    job(id: $id) {
+      id
+      inputs {
+        name
+        value
+      }
+      inputsSpec {
+        name
+        type
+        description
+        required
+        default
+        options
+        regex
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+# @feature_category: duo_agent_platform
+query getWorkflowStatus($workflowId: AiDuoWorkflowsWorkflowID!) {
+  duoWorkflowWorkflows(workflowId: $workflowId) {
+    nodes {
+      id
+      status
+      title
+      workflowDefinition
+      latestCheckpoint {
+        lastDuoMessage {
+          content
+          messageType
+          messageSubType
+          status
+          toolInfo
+          messageId
+        }
+      }
+    }
+  }
+}

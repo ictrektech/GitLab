@@ -1,0 +1,22 @@
+# @feature_category: system_access
+query oauthApplicationGroupHierarchySearch($fullPath: ID!, $search: String) {
+  group(fullPath: $fullPath) {
+    id
+    name
+    fullPath
+    descendantGroups(search: $search, first: 20) {
+      nodes {
+        id
+        name
+        fullPath
+      }
+    }
+    projects(includeSubgroups: true, search: $search, first: 20) {
+      nodes {
+        id
+        name
+        fullPath
+      }
+    }
+  }
+}

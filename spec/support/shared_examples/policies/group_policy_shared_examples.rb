@@ -1,0 +1,66 @@
+# frozen_string_literal: true
+
+RSpec.shared_examples 'group archiving abilities' do
+  let(:group) { create(:group, :public) }
+  let(:policy) { described_class.new(current_user, group) }
+  let(:current_user) { owner }
+
+  shared_examples 'prevents archived abilities' do
+    it 'prevents abilities defined in archived_abilities' do
+      archived_abilities.each do |ability|
+        expect(policy).not_to be_allowed(ability)
+      end
+    end
+  end
+
+  shared_examples 'prevents destroy actions' do
+    it 'prevents destroy actions on archived features' do
+      destroy_abilities.each do |feature|
+        expect(policy).not_to be_allowed(feature)
+      end
+    end
+  end
+
+  shared_examples 'read-only group' do
+    it_behaves_like 'prevents archived abilities'
+    it_behaves_like 'prevents destroy actions'
+  end
+
+  context 'when group is archived but not marked for deletion' do
+    before do
+      group.namespace_settings.update!(archived: true)
+    end
+
+    it_behaves_like 'read-only group'
+  end
+
+  context 'when group is archived and marked for deletion' do
+    before do
+      group.namespace_settings.update!(archived: true)
+      group.update!(state: :deletion_in_progress)
+    end
+
+    it_behaves_like 'read-only group'
+  end
+
+  context 'when group ancestor is archived' do
+    let(:group) { create(:group, :nested) }
+
+    before do
+      group.parent.namespace_settings.update!(archived: true)
+    end
+
+    it_behaves_like 'read-only group'
+  end
+
+  context 'when group ancestor is marked for deletion' do
+    let(:group) { create(:group, :nested) }
+
+    before do
+      group.parent.namespace_settings.update!(archived: true)
+      group.parent.update!(state: :deletion_in_progress)
+    end
+
+    it_behaves_like 'read-only group'
+  end
+end

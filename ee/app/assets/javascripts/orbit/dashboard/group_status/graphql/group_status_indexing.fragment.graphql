@@ -1,0 +1,14 @@
+fragment OrbitGroupStatusIndexing on Group {
+  id
+  orbit {
+    enabled @gl_introduced(version: "19.4.0")
+    enabledAt
+    indexing @gl_introduced(version: "19.4.0") {
+      state
+      areas {
+        name
+        state
+      }
+    }
+  }
+}

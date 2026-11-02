@@ -1,0 +1,13 @@
+#import "./mr_ai_overview_labels.fragment.graphql"
+#import "./mr_ai_overview_milestone.fragment.graphql"
+
+# @feature_category: code_review_workflow
+query mrAiOverviewMetadata($projectPath: ID!, $iid: String!) {
+  project(fullPath: $projectPath) {
+    id
+    mergeRequest(iid: $iid) {
+      ...MrAiOverviewLabels
+      ...MrAiOverviewMilestone
+    }
+  }
+}

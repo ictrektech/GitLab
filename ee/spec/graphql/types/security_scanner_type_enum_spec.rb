@@ -1,0 +1,24 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe GitlabSchema.types['SecurityScannerType'], feature_category: :vulnerability_management do
+  it 'exposes all security scanner types' do
+    expect(described_class.values.keys).to match_array(
+      %w[
+        API_FUZZING
+        BUSINESS_LOGIC
+        CLUSTER_IMAGE_SCANNING
+        CONTAINER_SCANNING
+        COVERAGE_FUZZING
+        DAST
+        DEPENDENCY_SCANNING
+        SAST
+        SAST_ADVANCED
+        SAST_IAC
+        SECRET_DETECTION
+        SKILLGUARD
+      ]
+    )
+  end
+end

@@ -1,0 +1,10 @@
+---
+name: mcp_container_lookup_cap
+description: Bounds the container lookups that run before an MCP tool validates its input. Reads a list only where the input schema declares one, caps paths and URLs per call, and skips lookups for unknown tool names.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634980
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263920
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635194
+milestone: '19.6'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

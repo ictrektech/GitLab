@@ -1,0 +1,21 @@
+fragment PackageSettingsFields on PackageSettings {
+  mavenDuplicatesAllowed
+  mavenDuplicateExceptionRegex
+  genericDuplicatesAllowed
+  genericDuplicateExceptionRegex
+  nugetDuplicatesAllowed
+  nugetDuplicateExceptionRegex
+  terraformModuleDuplicatesAllowed
+  terraformModuleDuplicateExceptionRegex
+  rubygemsDuplicatesAllowed
+  rubygemsDuplicateExceptionRegex
+  mavenPackageRequestsForwarding
+  lockMavenPackageRequestsForwarding
+  mavenPackageRequestsForwardingLocked
+  npmPackageRequestsForwarding
+  lockNpmPackageRequestsForwarding
+  npmPackageRequestsForwardingLocked
+  pypiPackageRequestsForwarding
+  lockPypiPackageRequestsForwarding
+  pypiPackageRequestsForwardingLocked
+}

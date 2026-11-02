@@ -1,0 +1,20 @@
+query getSelfHostedModelById($id: AiSelfHostedModelID) {
+  aiSelfHostedModels(id: $id) {
+    nodes {
+      id
+      name
+      model
+      modelDisplayName
+      provider
+      identifier
+      iamRole @gl_introduced(version: "19.5.0")
+      endpoint
+      apiToken
+      featureSettings {
+        nodes {
+          feature
+        }
+      }
+    }
+  }
+}

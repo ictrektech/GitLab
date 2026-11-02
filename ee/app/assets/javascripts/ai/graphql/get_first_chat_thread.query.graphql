@@ -1,0 +1,8 @@
+# @feature_category: duo_agent_platform
+query getFirstChatThread {
+  duoWorkflowWorkflows(type: "foundational_chat_agents", first: 1, environment: WEB) {
+    nodes {
+      id
+    }
+  }
+}

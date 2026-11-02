@@ -1,0 +1,11 @@
+query failedControls($groupPath: ID!) {
+  group(fullPath: $groupPath) {
+    id
+    complianceRequirementControlCoverage {
+      passed
+      failed
+      pending
+      notApplicable @gl_introduced(version: "19.6.0")
+    }
+  }
+}

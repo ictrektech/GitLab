@@ -1,0 +1,24 @@
+# @feature_category: artifact_registry
+
+query getArtifactRegistryRepositoryRoleAssignments(
+  $resourceId: String!
+  $first: Int!
+  $after: String
+) {
+  artifactRegistryRoleAssignments(resourceIds: [$resourceId], first: $first, after: $after) {
+    nodes {
+      role
+      assignee {
+        id
+        name
+        username
+        avatarUrl
+        webPath
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

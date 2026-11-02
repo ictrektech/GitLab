@@ -1,0 +1,10 @@
+# @feature_category: dap_triggers
+
+query getAutomationsCount($projectPath: ID!) {
+  project(fullPath: $projectPath) {
+    id
+    aiFlowTriggers {
+      count
+    }
+  }
+}

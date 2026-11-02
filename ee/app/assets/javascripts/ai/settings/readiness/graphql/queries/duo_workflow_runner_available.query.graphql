@@ -1,0 +1,9 @@
+# @feature_category: duo_agent_platform
+
+query getDuoWorkflowRunnerAvailable($fullPath: ID!) {
+  project(fullPath: $fullPath) {
+    id
+    duoWorkflowRunnerAvailable
+    duoWorkflowUsableRunnerType
+  }
+}

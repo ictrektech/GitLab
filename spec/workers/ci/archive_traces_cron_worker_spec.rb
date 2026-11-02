@@ -1,0 +1,132 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe Ci::ArchiveTracesCronWorker, :clean_gitlab_redis_shared_state,
+  feature_category: :continuous_integration, factory_default: :keep do
+  let_it_be(:project) { create_default(:project) }
+  let(:finished_at) { 1.day.ago }
+
+  subject { described_class.new.perform }
+
+  before do
+    stub_application_setting(ci_job_live_trace_enabled: true)
+  end
+
+  shared_examples_for 'archives trace' do
+    it 'keeps trace' do
+      subject
+
+      build.reload
+      expect(build.job_artifacts_trace).to be_exist
+    end
+  end
+
+  shared_examples_for 'does not archive trace' do
+    it 'does not keep trace' do
+      subject
+
+      build.reload
+      expect(build.job_artifacts_trace).to be_nil
+    end
+  end
+
+  context 'when a job succeeded' do
+    let!(:build) { create(:ci_build, :success, :trace_live, finished_at: finished_at) }
+
+    it_behaves_like 'archives trace'
+
+    it_behaves_like 'an idempotent worker' do
+      it 'archives the trace' do
+        perform_idempotent_work
+
+        expect(build.reload.job_artifacts_trace).to be_exist
+      end
+    end
+
+    it 'logs the run stats' do
+      worker = described_class.new
+
+      expect(worker).to receive(:log_extra_metadata_on_done)
+        .with(:result, hash_including(
+          processed: 1, completed_cycle: true, cursor_start: 0, pass_end: build.id, cursor_end: nil
+        ))
+
+      worker.perform
+    end
+
+    context 'when ci_archive_traces_cron_cursor is disabled' do
+      before do
+        stub_feature_flags(ci_archive_traces_cron_cursor: false)
+      end
+
+      it_behaves_like 'archives trace'
+
+      it 'does not log run stats' do
+        worker = described_class.new
+
+        expect(worker).not_to receive(:log_extra_metadata_on_done)
+
+        worker.perform
+      end
+    end
+
+    it 'batch_execute service' do
+      expect_next_instance_of(Ci::ArchiveTraceService) do |instance|
+        expect(instance).to receive(:batch_execute).with(worker_name: "Ci::ArchiveTracesCronWorker")
+      end
+
+      subject
+    end
+
+    context 'when the job finished recently' do
+      let(:finished_at) { 1.hour.ago }
+
+      it_behaves_like 'does not archive trace'
+    end
+
+    context 'when a trace had already been archived' do
+      let!(:build) { create(:ci_build, :success, :trace_live, :trace_artifact) }
+      let!(:build2) { create(:ci_build, :success, :trace_live, finished_at: finished_at) }
+
+      it 'continues to archive live traces' do
+        subject
+
+        build2.reload
+        expect(build2.job_artifacts_trace).to be_exist
+      end
+    end
+
+    context 'when an unexpected exception happened during archiving' do
+      let!(:build) { create(:ci_build, :success, :trace_live, finished_at: finished_at) }
+
+      before do
+        allow(Gitlab::ErrorTracking).to receive(:track_and_raise_for_dev_exception)
+        allow_next_instance_of(Gitlab::Ci::Trace) do |instance|
+          allow(instance).to receive(:archive!).and_raise('Unexpected error')
+        end
+      end
+
+      it 'puts a log' do
+        expect(Sidekiq.logger).to receive(:warn).with(
+          class: described_class.name,
+          message: "Failed to archive trace. message: Unexpected error.",
+          job_id: build.id)
+
+        subject
+      end
+    end
+  end
+
+  context 'when a job was cancelled' do
+    let!(:build) { create(:ci_build, :canceled, :trace_live, finished_at: finished_at) }
+
+    it_behaves_like 'archives trace'
+  end
+
+  context 'when a job is running' do
+    let!(:build) { create(:ci_build, :running, :trace_live) }
+
+    it_behaves_like 'does not archive trace'
+  end
+end

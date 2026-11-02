@@ -1,0 +1,11 @@
+---
+name: duo_usage_attribution_for_indirect_members
+description: Attribute GitLab Duo usage to the root group for indirect members who have
+  Duo access through that group
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/627731
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/254204
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/628449
+milestone: '19.5'
+group: group::monetization
+type: gitlab_com_derisk
+default_enabled: false

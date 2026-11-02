@@ -1,0 +1,6 @@
+# @feature_category: navigation
+mutation updateSidebarNavigationMode($mode: SidebarNavigationMode!) {
+  userPreferencesUpdate(input: { sidebarNavigationMode: $mode }) {
+    errors
+  }
+}

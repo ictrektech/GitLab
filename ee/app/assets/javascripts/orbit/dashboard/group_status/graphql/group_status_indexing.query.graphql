@@ -1,0 +1,13 @@
+#import "./group_status_indexing.fragment.graphql"
+
+# @feature_category: knowledge_graph
+# Polls only the index status, so a poll calls Orbit and never CustomersDot.
+query getOrbitGroupStatusIndexing($ids: [ID!], $first: Int) {
+  orbit @gl_introduced(version: "19.4.0") {
+    groups(ids: $ids, first: $first) {
+      nodes {
+        ...OrbitGroupStatusIndexing
+      }
+    }
+  }
+}

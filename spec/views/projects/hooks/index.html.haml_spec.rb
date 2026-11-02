@@ -1,0 +1,96 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe 'projects/hooks/index' do
+  let(:user) { build_stubbed(:user) }
+  let(:project) { build_stubbed(:project) }
+  let(:existing_hook) { build_stubbed(:project_hook, project: project) }
+  let(:new_hook) { ProjectHook.new }
+
+  before do
+    assign :project, project
+    assign :hooks, [existing_hook]
+    assign :hook, new_hook
+
+    allow(view).to receive_messages(current_user: user, can?: false)
+  end
+
+  it 'renders webhooks page with "Webhooks"' do
+    render
+
+    expect(rendered).to have_css('.gl-heading-2', text: _('Webhooks'))
+    expect(rendered).to have_text('Webhooks')
+    expect(rendered).not_to have_css('.gl-badge', text: s_('Webhooks|Rate limited'))
+    expect(rendered).not_to have_css('.gl-badge', text: s_('Webhooks|Disabled'))
+    expect(rendered).not_to have_css('.gl-badge', text: s_('Webhooks|Temporarily disabled'))
+  end
+
+  context 'when webhook is rate limited' do
+    before do
+      allow(existing_hook).to receive(:rate_limited?).and_return(true)
+    end
+
+    it 'renders "Rate limited" badge' do
+      render
+
+      expect(rendered).to have_css('.gl-badge', text: s_('Webhooks|Rate limited'))
+    end
+  end
+
+  context 'when webhook is permanently disabled' do
+    before do
+      allow(existing_hook).to receive(:permanently_disabled?).and_return(true)
+    end
+
+    it 'renders "Disabled" badge' do
+      render
+
+      expect(rendered).to have_css('.gl-badge', text: s_('Webhooks|Disabled'))
+    end
+  end
+
+  context 'when webhook is temporarily disabled' do
+    before do
+      allow(existing_hook).to receive(:temporarily_disabled?).and_return(true)
+    end
+
+    it 'renders "Temporarily disabled" badge' do
+      render
+
+      expect(rendered).to have_css('.gl-badge', text: s_('Webhooks|Temporarily disabled'))
+    end
+  end
+
+  context 'when the user has the webhook write permissions' do
+    before do
+      allow(view).to receive(:can?).with(user, :create_webhook, new_hook).and_return(true)
+      allow(view).to receive(:can?).with(user, :test_webhook, existing_hook).and_return(true)
+      allow(view).to receive(:can?).with(user, :update_webhook, existing_hook).and_return(true)
+      allow(view).to receive(:can?).with(user, :delete_webhook, existing_hook).and_return(true)
+    end
+
+    it 'renders the add form and the Test, Edit and Delete controls' do
+      render
+
+      expect(rendered).to have_button(_('Add new webhook'))
+      expect(rendered).to have_css('form.js-webhook-form')
+      expect(rendered).to have_css('.js-webhook-test-dropdown')
+      expect(rendered).to have_link(_('Edit'))
+      expect(rendered).to have_link(_('Delete'))
+    end
+  end
+
+  context 'when the user has none of the webhook write permissions' do
+    it 'does not render the add form or the Test, Edit and Delete controls' do
+      render
+
+      expect(rendered).to have_text(existing_hook.url)
+      expect(rendered).not_to have_button(_('Add new webhook'))
+      expect(rendered).not_to have_css('form.js-webhook-form')
+      expect(rendered).not_to have_css('.js-webhook-test-dropdown')
+      expect(rendered).not_to have_link(_('Edit'))
+      expect(rendered).not_to have_link(_('Delete'))
+    end
+  end
+end

@@ -1,0 +1,11 @@
+# @feature_category: custom_dashboards_foundation
+
+# Only `requireDuoAgentPlatform` dashboards run this, and none exist in CE, whose schema has no
+# `withDuoAgentPlatformEnabled`. The EE query of the same file name is the real one.
+query getAnalyticsDashboardDuoAgentPlatformGroupsCE($ids: [ID!]) {
+  groups(ids: $ids, allAvailable: false) {
+    nodes {
+      id
+    }
+  }
+}

@@ -1,0 +1,10 @@
+---
+name: dependency_management_conventional_commits
+description: Uses Conventional Commits in auto-remediation commit subjects and merge request titles when the repository history does.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631539
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/259098
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635262
+milestone: '19.6'
+group: group::code security
+type: gitlab_com_derisk
+default_enabled: false

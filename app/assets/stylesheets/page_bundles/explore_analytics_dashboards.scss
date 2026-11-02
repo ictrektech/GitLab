@@ -1,0 +1,38 @@
+@import 'mixins_and_variables_and_functions';
+
+// The checkbox label is an inline-block, so with nowrap text it grows to the full name and
+// nothing inside it can truncate. Capping it at the checkbox's width lets the name shrink.
+.scope-picker-item-checkbox .custom-control-label {
+  @apply gl-max-w-full;
+}
+
+// Below md the filters stack vertically and would cover most of a small
+// viewport when stuck, so the bar only sticks once it lays out as a row.
+@include media-breakpoint-up(md) {
+  .explore-analytics-dashboard {
+    .explore-dashboard-filters {
+      position: sticky;
+      top: $calc-application-header-height;
+      z-index: 1;
+      background-color: var(--gl-background-color-default);
+    }
+
+    // Chart tooltips are GlPopovers (z-index 1060) rendered inside the panels.
+    // Isolating the grid traps them in its own stacking context, so the bar's
+    // z-index: 1 paints over them without having to outrank modals (1050).
+    .grid-stack {
+      isolation: isolate;
+    }
+  }
+
+  // Keyboard focus jumps and anchor scrolls align the target with the edge of
+  // the scrolling element, which the opaque stuck bar covers. The paneled
+  // layout scrolls .panel-content-inner, and scroll padding only applies on the
+  // element that scrolls. 10rem clears the stuck view tabs and filter row, plus
+  // the focus ring. Guard on the dashboard class so routes that load this
+  // bundle without a sticky bar (the dashboards list) keep the default alignment.
+  // stylelint-disable-next-line gitlab/no-has -- only applies while the sticky dashboard layout is rendered
+  .panel-content-inner:has(.explore-analytics-dashboard) {
+    scroll-padding-top: 10rem;
+  }
+}

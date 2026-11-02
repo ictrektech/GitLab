@@ -1,0 +1,10 @@
+#import "./mr_ai_overview_reviewers.fragment.graphql"
+
+# @feature_category: code_review_workflow
+subscription mrAiOverviewReviewers($issuableId: IssuableID!) {
+  mergeRequestReviewersUpdated(issuableId: $issuableId) {
+    ... on MergeRequest {
+      ...MrAiOverviewReviewers
+    }
+  }
+}

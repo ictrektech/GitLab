@@ -1,0 +1,9 @@
+# @feature_category: knowledge_graph
+mutation orbitExcludedGroupDestroy($groupPath: ID!) {
+  orbitExcludedGroupDestroy(input: { groupPath: $groupPath }) @gl_introduced(version: "19.4.0") {
+    group {
+      id
+    }
+    errors
+  }
+}

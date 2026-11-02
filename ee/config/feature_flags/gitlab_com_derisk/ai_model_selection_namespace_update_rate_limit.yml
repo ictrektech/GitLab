@@ -1,0 +1,10 @@
+---
+name: ai_model_selection_namespace_update_rate_limit
+description: Gates the per user rate limit on the aiModelSelectionNamespaceUpdate mutation
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635380
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265318
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636293
+milestone: '19.6'
+group: group::ai model services
+type: gitlab_com_derisk
+default_enabled: false

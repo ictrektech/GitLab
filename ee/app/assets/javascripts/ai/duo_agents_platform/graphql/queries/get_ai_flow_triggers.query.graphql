@@ -1,0 +1,13 @@
+# @feature_category: dap_triggers
+#import "../fragments/flow_trigger.fragment.graphql"
+
+query getAiFlowTriggers($projectPath: ID!, $ids: [AiFlowTriggerID!] = null) {
+  project(fullPath: $projectPath) {
+    id
+    aiFlowTriggers(ids: $ids) {
+      nodes {
+        ...FlowTriggerFragment
+      }
+    }
+  }
+}

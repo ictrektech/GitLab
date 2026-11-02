@@ -1,0 +1,145 @@
+# EE API routes documented (as operations) in the OpenAPI spec without a `route_setting :tier`.
+# Checked by ee/spec/lib/api/every_ee_api_endpoint_tier_spec.rb.
+# Routes awaiting a tier decision are tracked in https://gitlab.com/gitlab-org/gitlab/-/work_items/631956.
+
+# Reason: Available on every tier (licensing, billing, seats, and setup)
+- DELETE /experiments/:experiment_name/assignments
+- DELETE /experiments/:name/cache
+- GET /experiments
+- GET /experiments/:experiment_name/assignments
+- POST /experiments/:experiment_name/assignments
+- DELETE /license/:id
+- GET /license
+- GET /license/:id
+- GET /license/usage_export
+- GET /licenses
+- POST /license
+- PUT /license/:id/refresh_billable_users
+- PATCH /namespaces/:id/minutes/move/:target_id
+- POST /namespaces/:id/minutes
+- GET /namespaces/:id/subscription_add_on_purchase/:add_on_name
+- POST /namespaces/:id/subscription_add_on_purchase/:add_on_name
+- PUT /namespaces/:id/subscription_add_on_purchase/:add_on_name
+- POST /namespaces/:id/gitlab_subscription
+- PUT /namespaces/:id/gitlab_subscription
+- GET /namespaces/:id/gitlab_subscription
+- PUT /namespaces/:id
+- DELETE /namespaces/:id/storage/limit_exclusion
+- GET /namespaces/storage/limit_exclusions
+- POST /namespaces/:id/storage/limit_exclusion
+- GET /internal/gitlab_subscriptions/namespaces/:id/projects
+- DELETE /groups/:id/billable_members/:user_id
+- GET /groups/:id/billable_members
+- GET /groups/:id/billable_members/:user_id/indirect
+- GET /groups/:id/billable_members/:user_id/memberships
+- GET /groups/:id/pending_members
+- POST /groups/:id/members/approve_all
+- PUT /groups/:id/members/:member_id/approve
+- PUT /groups/:id/members/:user_id/state
+- GET /projects/:id/google_cloud/setup/integrations.sh
+- GET /projects/:id/google_cloud/setup/runner_deployment_project.sh
+- POST /projects/:id/create_ci_config
+- POST /rollouts/:id
+- POST /token_exchange
+
+# Reason: Available on every tier (skip the Orbit entitlement check)
+- GET /orbit/skills
+- GET /orbit/skills/:name
+- GET /orbit/skills/:name/?*path
+
+# Reason: Pending decision - gated by a GitLab Duo add-on rather than a tier
+- POST /ai/duo_workflows/agent_workflows
+- POST /ai/duo_workflows/workflows/:id/audit_events
+- GET /ai/duo_workflows/code_review/custom_instructions
+- POST /ai/duo_workflows/code_review/add_comments
+- POST /ai/duo_workflows/tools/risk_assessment/results
+- GET /ai/duo_workflows/list_tools
+- GET /ai/duo_workflows/workflows/:workflow_id/trace.jsonl
+- GET /ai/duo_workflows/workflows/agent_privileges
+- GET /ai/duo_workflows/ws
+- POST /ai/duo_workflows/direct_access
+- POST /ai/duo_workflows/workflows
+- POST /ai/duo_workflows/workflows/:workflow_id/execute
+- POST /ai/duo_workflows/workflows/:workflow_id/restart
+- POST /ai/duo_workflows/workflows/:workflow_id/resume
+- GET /ai/duo_workflows/workflows/:id
+- GET /ai/duo_workflows/workflows/:id/checkpoints
+- GET /ai/duo_workflows/workflows/:id/checkpoints/:checkpoint_id
+- GET /ai/duo_workflows/workflows/:id/checkpoints/by_thread_ts
+- GET /ai/duo_workflows/workflows/:id/events
+- PATCH /ai/duo_workflows/workflows/:id
+- POST /ai/duo_workflows/revoke_token
+- POST /ai/duo_workflows/workflows/:id/checkpoint_writes_batch
+- POST /ai/duo_workflows/workflows/:id/checkpoints
+- POST /ai/duo_workflows/workflows/:id/events
+- PUT /ai/duo_workflows/workflows/:id/events/:event_id
+- GET /ai/duo_workflows/workflows/:workflow_id/session_files/:file_id
+- POST /ai/duo_workflows/workflows/:workflow_id/session_files
+- POST /ai/duo_workflows/workflows/:workflow_id/session_files/authorize
+- POST /ai/llm/git_command
+- POST /ai/third_party_agents/direct_access
+- POST /projects/:id/merge_requests/:merge_request_iid/suggested_reviewers
+- POST /chat/completions
+- POST /code_suggestions/completions
+- POST /code_suggestions/connection_details
+- POST /code_suggestions/direct_access
+- POST /code_suggestions/enabled
+- POST /duo_code_review/evaluations
+- GET /projects/:id/(-/)search/semantic
+- DELETE /admin/active_context/dead_queue
+- GET /admin/active_context/connections
+- POST /admin/active_context/dead_queue/replay
+- PUT /admin/active_context/code/enabled_namespaces
+- PUT /admin/active_context/collections/:id
+- PUT /admin/active_context/connections/activate
+- PUT /admin/active_context/connections/deactivate
+
+# Reason: Pending decision - instance admin endpoints that check only admin access
+- DELETE /admin/zoekt/shards/:node_id/indexed_namespaces/:namespace_id
+- GET /admin/zoekt/shards
+- GET /admin/zoekt/shards/:node_id/indexed_namespaces
+- PATCH /admin/zoekt/namespaces/:id
+- PUT /admin/zoekt/projects/:project_id/index
+- PUT /admin/zoekt/shards/:node_id/indexed_namespaces/:namespace_id
+- PUT /elasticsearch_indexed_namespaces/rollback
+- PUT /elasticsearch_indexed_namespaces/rollout
+- GET /ldap/:provider/groups
+- GET /ldap/groups
+
+# Reason: Pending decision - likely Premium, the endpoint has no license check of its own
+- DELETE /projects/:id/merge_requests/:merge_request_iid/blocks/:block_id
+- GET /projects/:id/merge_requests/:merge_request_iid/blockees
+- GET /projects/:id/merge_requests/:merge_request_iid/blocks
+- GET /projects/:id/merge_requests/:merge_request_iid/blocks/:block_id
+- POST /projects/:id/merge_requests/:merge_request_iid/blocks
+- DELETE /projects/:id/issues/:issue_iid/metric_images/:metric_image_id
+- GET /projects/:id/issues/:issue_iid/metric_images
+- POST /projects/:id/issues/:issue_iid/metric_images
+- POST /projects/:id/issues/:issue_iid/metric_images/authorize
+- PUT /projects/:id/issues/:issue_iid/metric_images/:metric_image_id
+- DELETE /groups/:id/members/:user_id/override
+- POST /groups/:id/members/:user_id/override
+
+# Reason: Pending decision - docs and code disagree, or the owning team needs to confirm
+- PATCH /projects/:id/compliance_external_controls/:control_id/status
+- POST /projects/:id/releases/:tag_name/evidence
+- GET /internal/agents/agentw/agent_info
+- GET /internal/agents/agentw/authorize_user_access
+- GET /internal/agents/agentw/server_config
+
+# Reason: Pending decision - deprecated endpoint
+- DELETE /projects/:id/managed_licenses/:managed_license_id
+- GET /projects/:id/managed_licenses
+- GET /projects/:id/managed_licenses/:managed_license_id
+- PATCH /projects/:id/managed_licenses/:managed_license_id
+- POST /projects/:id/managed_licenses
+
+# Reason: Geo node-to-node traffic, candidates for excluded_api_classes
+- GET /geo/repositories/:gl_repository/pipeline_refs
+- GET /geo/retrieve/:replicable_name/:replicable_id
+- POST /geo/failures
+- POST /geo/proxy_git_ssh/info_refs_receive_pack
+- POST /geo/proxy_git_ssh/info_refs_upload_pack
+- POST /geo/proxy_git_ssh/receive_pack
+- POST /geo/proxy_git_ssh/upload_pack
+- POST /geo/status

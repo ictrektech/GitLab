@@ -1,0 +1,748 @@
+import { nextTick } from 'vue';
+import { GlIcon, GlSkeletonLoader } from '@gitlab/ui';
+import { mountExtended, shallowMountExtended } from 'helpers/vue_test_utils_helper';
+import ThResizable from '~/glql/components/common/th_resizable.vue';
+import FieldPresenter from '~/glql/components/presenters/field.vue';
+import IssuablePresenter from '~/glql/components/presenters/issuable.vue';
+import ProjectPresenter from '~/glql/components/presenters/project.vue';
+import StatePresenter from '~/glql/components/presenters/state.vue';
+import TablePresenter from '~/glql/components/presenters/table.vue';
+import HtmlPresenter from '~/glql/components/presenters/html.vue';
+import UserPresenter from '~/glql/components/presenters/user.vue';
+import { useMockLocationHelper } from 'helpers/mock_window_location_helper';
+import {
+  MOCK_AGGREGATED_DATA_ONE_DIM,
+  MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+  MOCK_FIELDS,
+  MOCK_ISSUES,
+  MOCK_PROJECT,
+} from '../../mock_data';
+
+describe('TablePresenter', () => {
+  let wrapper;
+
+  useMockLocationHelper();
+
+  beforeEach(() => {
+    window.location.href = 'https://gitlab.com/gitlab-org/gitlab-shell/-/issues/1';
+    window.location.origin = 'https://gitlab.com';
+  });
+
+  const createWrapper = async (
+    { data, fields, provide = {}, ...moreProps },
+    mountFn = shallowMountExtended,
+  ) => {
+    wrapper = mountFn(TablePresenter, {
+      propsData: { data, fields, ...moreProps },
+      provide,
+    });
+
+    await nextTick();
+  };
+
+  const getCells = (row) => row.findAll('td').wrappers.map((td) => td.text());
+  // Collapses the line breaks between a cell's label and its hint.
+  const getCellsText = (row) => getCells(row).map((text) => text.replace(/\s+/g, ' '));
+
+  it('renders header rows with sentence cased field names', async () => {
+    await createWrapper({ data: MOCK_ISSUES, fields: MOCK_FIELDS });
+
+    const headerCells = wrapper.findAllComponents(ThResizable).wrappers.map((th) => th.text());
+
+    expect(headerCells).toEqual(['Title', 'Author', 'State', 'Description']);
+  });
+
+  it('renders header rows with granularity when fields have parameters', async () => {
+    const fieldsWithGranularity = [
+      {
+        key: 'finished',
+        label: 'Finished',
+        name: 'finishedAt',
+        type: 'dimension',
+        parameters: { granularity: 'weekly' },
+      },
+      { key: 'totalCount', label: 'Total count', name: 'totalCount', type: 'metric' },
+    ];
+
+    await createWrapper({ data: { nodes: [] }, fields: fieldsWithGranularity });
+
+    const headerCells = wrapper.findAllComponents(ThResizable).wrappers.map((th) => th.text());
+
+    expect(headerCells).toEqual(['Finished (weekly)', 'Total count']);
+  });
+
+  it('renders the alias label without the granularity suffix for aliased fields', async () => {
+    const aliasedTimeDimension = {
+      key: 'foo',
+      field: 'created',
+      label: 'foo',
+      name: 'createdAt',
+      type: 'dimension',
+      parameters: { granularity: 'weekly' },
+    };
+
+    await createWrapper({ data: { nodes: [] }, fields: [aliasedTimeDimension] });
+
+    const headerCells = wrapper.findAllComponents(ThResizable).wrappers.map((th) => th.text());
+
+    expect(headerCells).toEqual(['foo']);
+  });
+
+  it('passes field key for data access and presenter key for dispatch on aliased fields', async () => {
+    const aliasedField = {
+      key: 'p50',
+      field: 'durationQuantile',
+      label: 'Duration P50',
+      type: 'metric',
+      parameters: { quantile: 0.5 },
+    };
+
+    await createWrapper({
+      data: { nodes: [{ p50: 3661 }] },
+      fields: [aliasedField],
+    });
+
+    const fieldPresenter = wrapper.findComponent(FieldPresenter);
+    expect(fieldPresenter.props('fieldKey')).toBe('p50');
+    expect(fieldPresenter.props('presenterKey')).toBe('durationQuantile');
+  });
+
+  it('renders date bucket dimensions as date-only labels, not relative time', async () => {
+    const monthlyDimension = {
+      key: 'created',
+      label: 'Created',
+      name: 'created',
+      type: 'dimension',
+      parameters: { granularity: 'monthly' },
+    };
+
+    await createWrapper(
+      {
+        data: { nodes: [{ created: '2026-06-01' }, { created: '2026-07-01' }] },
+        fields: [monthlyDimension],
+      },
+      mountExtended,
+    );
+
+    expect(getCells(wrapper.findByTestId('table-row-0'))).toEqual(['Jun 2026']);
+    expect(getCells(wrapper.findByTestId('table-row-1'))).toEqual(['Jul 2026']);
+  });
+
+  it('renders formatted values, not "None", for aliased parameterised fields', async () => {
+    const fields = [
+      {
+        key: 'Monthly',
+        field: 'timestamp',
+        label: 'Monthly',
+        name: 'timestamp',
+        type: 'dimension',
+        parameters: { granularity: 'monthly' },
+      },
+      {
+        key: 'p50',
+        field: 'durationQuantile',
+        label: 'Duration P50',
+        name: 'durationQuantile',
+        type: 'metric',
+        parameters: { quantile: 0.5 },
+      },
+    ];
+
+    await createWrapper(
+      { data: { nodes: [{ id: '1', Monthly: '2026-06-01', p50: 3661 }] }, fields },
+      mountExtended,
+    );
+
+    const cells = getCells(wrapper.findByTestId('table-row-0'));
+
+    expect(cells).toEqual(['Jun 2026', '1h 1m 1s']);
+  });
+
+  describe('null values', () => {
+    const fields = [
+      { key: 'status', label: 'Status', name: 'status', type: 'dimension' },
+      { key: 'usersCount', label: 'Users', name: 'usersCount', type: 'metric' },
+      { key: 'creditsUsedSum', label: 'Credits', name: 'creditsUsedSum', type: 'metric' },
+    ];
+
+    const projectFields = [
+      { key: 'project', label: 'Project', name: 'project', type: 'dimension' },
+      { key: 'usersCount', label: 'Users', name: 'usersCount', type: 'metric' },
+    ];
+
+    beforeEach(async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', status: null, usersCount: 864, creditsUsedSum: null }] },
+          fields,
+        },
+        mountExtended,
+      );
+    });
+
+    it('renders a dash, not "None", for a null metric', () => {
+      expect(getCells(wrapper.findByTestId('table-row-0'))).toEqual(['None', '864', '—']);
+      expect(wrapper.findByTestId('metric-no-value').exists()).toBe(true);
+    });
+
+    it('names a null group or project bucket instead of rendering "None"', async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', Group: null, project: null, usersCount: 864 }] },
+          fields: [
+            {
+              key: 'Group',
+              field: 'group',
+              label: 'Group',
+              name: 'group',
+              type: 'dimension',
+              // The compiler passes parameters as strings.
+              parameters: { depth: '2' },
+            },
+            { key: 'project', label: 'Project', name: 'project', type: 'dimension' },
+            { key: 'usersCount', label: 'Users', name: 'usersCount', type: 'metric' },
+          ],
+          source: 'DuoWorkflows',
+        },
+        mountExtended,
+      );
+
+      expect(getCellsText(wrapper.findByTestId('table-row-0'))).toEqual([
+        'Not in a subgroup May include subgroups you cannot see',
+        'No project Not tied to a project, or a project you cannot see',
+        '864',
+      ]);
+      expect(wrapper.findAllByTestId('dimension-no-value-hint')).toHaveLength(2);
+    });
+
+    it('explains a null project bucket for agent platform sessions', async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', project: null, usersCount: 864 }] },
+          fields: projectFields,
+          source: 'AgentPlatformSessions',
+        },
+        mountExtended,
+      );
+
+      expect(getCellsText(wrapper.findByTestId('table-row-0'))).toEqual([
+        'No project Not tied to a project, or a project you cannot see',
+        '864',
+      ]);
+    });
+
+    it('names a null project bucket without the hint for pipelines', async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', project: null, usersCount: 864 }] },
+          fields: projectFields,
+          source: 'Pipelines',
+        },
+        mountExtended,
+      );
+
+      expect(getCellsText(wrapper.findByTestId('table-row-0'))).toEqual(['No project', '864']);
+      expect(wrapper.findByTestId('dimension-no-value-hint').exists()).toBe(false);
+    });
+
+    it('names a null project bucket without the hint when the source is unknown', async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', project: null, usersCount: 864 }] },
+          fields: projectFields,
+        },
+        mountExtended,
+      );
+
+      expect(getCellsText(wrapper.findByTestId('table-row-0'))).toEqual(['No project', '864']);
+      expect(wrapper.findByTestId('dimension-no-value-hint').exists()).toBe(false);
+    });
+
+    it('says which depth a null group bucket is missing at', async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', group: null, usersCount: 12 }] },
+          fields: [
+            {
+              key: 'group',
+              label: 'Group',
+              name: 'group',
+              type: 'dimension',
+              parameters: { depth: 3 },
+            },
+            { key: 'usersCount', label: 'Users', name: 'usersCount', type: 'metric' },
+          ],
+        },
+        mountExtended,
+      );
+
+      expect(getCellsText(wrapper.findByTestId('table-row-0'))).toEqual([
+        'No group No group at depth 3',
+        '12',
+      ]);
+    });
+
+    it('treats a group dimension without parameters as depth 1', async () => {
+      await createWrapper(
+        {
+          data: { nodes: [{ id: '1', group: null, usersCount: 5 }] },
+          fields: [
+            { key: 'group', label: 'Group', name: 'group', type: 'dimension' },
+            { key: 'usersCount', label: 'Users', name: 'usersCount', type: 'metric' },
+          ],
+        },
+        mountExtended,
+      );
+
+      expect(getCellsText(wrapper.findByTestId('table-row-0'))).toEqual([
+        'No group No group at depth 1',
+        '5',
+      ]);
+    });
+
+    it('leaves a null project alone outside analytics mode', async () => {
+      await createWrapper(
+        {
+          data: {
+            nodes: [
+              { id: '1', title: 'An issue', webUrl: 'https://gitlab.com/issues/1', project: null },
+            ],
+          },
+          fields: [
+            { key: 'title', label: 'Title', name: 'title' },
+            { key: 'project', label: 'Project', name: 'project' },
+          ],
+        },
+        mountExtended,
+      );
+
+      expect(getCells(wrapper.findByTestId('table-row-0'))).toEqual(['An issue', 'None']);
+      expect(wrapper.findByTestId('dimension-no-value').exists()).toBe(false);
+    });
+
+    it('keeps the null presenter for a null dimension', () => {
+      expect(wrapper.findAllComponents(FieldPresenter)).toHaveLength(2);
+    });
+  });
+
+  it('renders skeleton loader if loading is true', () => {
+    createWrapper({ data: { nodes: [] }, fields: MOCK_FIELDS, loading: true }, mountExtended);
+
+    // 5 rows of 4 columns each
+    expect(wrapper.findAllComponents(GlSkeletonLoader)).toHaveLength(20);
+  });
+
+  it('renders a row of items presented by appropriate presenters', async () => {
+    await createWrapper({ data: MOCK_ISSUES, fields: MOCK_FIELDS }, mountExtended);
+
+    const tableRow1 = wrapper.findByTestId('table-row-0');
+    const tableRow2 = wrapper.findByTestId('table-row-1');
+
+    const issuePresenter1 = tableRow1.findComponent(IssuablePresenter);
+    const issuePresenter2 = tableRow2.findComponent(IssuablePresenter);
+    const userPresenter1 = tableRow1.findComponent(UserPresenter);
+    const userPresenter2 = tableRow2.findComponent(UserPresenter);
+    const statePresenter1 = tableRow1.findComponent(StatePresenter);
+    const statePresenter2 = tableRow2.findComponent(StatePresenter);
+    const htmlPresenter1 = tableRow1.findComponent(HtmlPresenter);
+    const htmlPresenter2 = tableRow2.findComponent(HtmlPresenter);
+
+    expect(issuePresenter1.props('data')).toBe(MOCK_ISSUES.nodes[0]);
+    expect(issuePresenter2.props('data')).toBe(MOCK_ISSUES.nodes[1]);
+    expect(userPresenter1.props('data')).toBe(MOCK_ISSUES.nodes[0].author);
+    expect(userPresenter2.props('data')).toBe(MOCK_ISSUES.nodes[1].author);
+    expect(statePresenter1.props('data')).toBe(MOCK_ISSUES.nodes[0].state);
+    expect(statePresenter2.props('data')).toBe(MOCK_ISSUES.nodes[1].state);
+    expect(htmlPresenter1.props('data')).toBe(MOCK_ISSUES.nodes[0].description);
+    expect(htmlPresenter2.props('data')).toBe(MOCK_ISSUES.nodes[1].description);
+
+    expect(getCells(tableRow1)).toEqual([
+      'Issue 1 (gitlab-test#1)',
+      '@foobar',
+      'Open',
+      'This is a description',
+    ]);
+    expect(getCells(tableRow2)).toEqual([
+      'Issue 2 (gitlab-test#2 - closed)',
+      '@janedoe',
+      'Closed',
+      'This is another description',
+    ]);
+  });
+
+  it('routes the title-aliased field of a Project row through ProjectPresenter', async () => {
+    await createWrapper(
+      {
+        data: { nodes: [{ ...MOCK_PROJECT, id: 'gid://gitlab/Project/1', name: 'Wget2' }] },
+        fields: [{ key: 'name', label: 'Name', name: 'name' }],
+      },
+      mountExtended,
+    );
+
+    const row = wrapper.findByTestId('table-row-0');
+    expect(row.findComponent(ProjectPresenter).exists()).toBe(true);
+  });
+
+  const order0 = [
+    ['Issue 1 (gitlab-test#1)', '@foobar', 'Open', 'This is a description'],
+    ['Issue 2 (gitlab-test#2 - closed)', '@janedoe', 'Closed', 'This is another description'],
+  ];
+
+  const order1 = [
+    ['Issue 2 (gitlab-test#2 - closed)', '@janedoe', 'Closed', 'This is another description'],
+    ['Issue 1 (gitlab-test#1)', '@foobar', 'Open', 'This is a description'],
+  ];
+
+  describe.each`
+    cellIndex | headerTitle      | orderAsc  | orderDesc
+    ${0}      | ${'title'}       | ${order0} | ${order1}
+    ${1}      | ${'author'}      | ${order0} | ${order1}
+    ${2}      | ${'state'}       | ${order0} | ${order1}
+    ${3}      | ${'description'} | ${order0} | ${order1}
+  `('when clicking on header cell at index $cellIndex', ({ cellIndex, orderAsc, orderDesc }) => {
+    let actualOrder;
+
+    const triggerClick = async () => {
+      await nextTick();
+      await wrapper.findByTestId(`column-${cellIndex}`).trigger('click');
+
+      actualOrder = wrapper.findAll('tbody tr').wrappers.map(getCells);
+    };
+
+    beforeEach(async () => {
+      await createWrapper({ data: MOCK_ISSUES, fields: MOCK_FIELDS }, mountExtended);
+
+      await triggerClick();
+    });
+
+    describe('once', () => {
+      it('sorts the table by the field in ascending order', () => {
+        expect(actualOrder).toEqual(orderAsc);
+      });
+
+      it('shows an arrow-up icon on the sorted column', () => {
+        const icon = wrapper.findByTestId(`column-${cellIndex}`).findComponent(GlIcon);
+
+        expect(icon.props('name')).toBe('arrow-up');
+      });
+
+      it('does not show a sort icon on other columns', () => {
+        const otherColumns = MOCK_FIELDS.filter((_, i) => i !== cellIndex);
+
+        otherColumns.forEach((_, i) => {
+          const colIndex = i >= cellIndex ? i + 1 : i;
+          const icon = wrapper.findByTestId(`column-${colIndex}`).findComponent(GlIcon);
+
+          expect(icon.exists()).toBe(false);
+        });
+      });
+    });
+
+    describe('twice', () => {
+      beforeEach(async () => {
+        await triggerClick();
+      });
+
+      it('sorts the table by the field in descending order', () => {
+        expect(actualOrder).toEqual(orderDesc);
+      });
+
+      it('shows an arrow-down icon on the sorted column', () => {
+        const icon = wrapper.findByTestId(`column-${cellIndex}`).findComponent(GlIcon);
+
+        expect(icon.props('name')).toBe('arrow-down');
+      });
+    });
+  });
+
+  describe('when a column sorts by another key', () => {
+    beforeEach(async () => {
+      await createWrapper(
+        {
+          data: {
+            nodes: [
+              { id: '1', name: 'alpha', rank: 2 },
+              { id: '2', name: 'beta', rank: 1 },
+            ],
+          },
+          fields: [{ key: 'name', sortKey: 'rank', label: 'Name', type: 'dimension' }],
+        },
+        mountExtended,
+      );
+
+      await wrapper.findByTestId('column-0').trigger('click');
+    });
+
+    it('orders the rows by the sort key, not the rendered value', () => {
+      expect(wrapper.findAll('tbody tr').wrappers.map(getCells)).toEqual([['beta'], ['alpha']]);
+    });
+
+    it('marks the column as the sorted one', () => {
+      expect(wrapper.findByTestId('column-0').findComponent(GlIcon).props('name')).toBe('arrow-up');
+    });
+  });
+
+  describe('when sorting by an aliased column', () => {
+    const aliasedField = {
+      key: 'p50',
+      field: 'durationQuantile',
+      label: 'Duration P50',
+      type: 'metric',
+      parameters: { quantile: 0.5 },
+    };
+
+    beforeEach(async () => {
+      await createWrapper(
+        {
+          data: {
+            nodes: [
+              { id: '1', p50: 7200 },
+              { id: '2', p50: 3600 },
+            ],
+          },
+          fields: [aliasedField],
+        },
+        mountExtended,
+      );
+
+      await wrapper.findByTestId('column-0').trigger('click');
+    });
+
+    it('reorders the rows by the alias key in ascending order', () => {
+      const actualOrder = wrapper.findAll('tbody tr').wrappers.map(getCells);
+
+      expect(actualOrder).toEqual([['1h'], ['2h']]);
+    });
+
+    it('shows an arrow-up icon on the sorted column', () => {
+      const icon = wrapper.findByTestId('column-0').findComponent(GlIcon);
+
+      expect(icon.props('name')).toBe('arrow-up');
+    });
+
+    it('reorders the rows in descending order on a second click', async () => {
+      await wrapper.findByTestId('column-0').trigger('click');
+
+      const actualOrder = wrapper.findAll('tbody tr').wrappers.map(getCells);
+
+      expect(actualOrder).toEqual([['2h'], ['1h']]);
+      expect(wrapper.findByTestId('column-0').findComponent(GlIcon).props('name')).toBe(
+        'arrow-down',
+      );
+    });
+  });
+
+  describe('caption', () => {
+    it('names the table with the panel title for screen readers', async () => {
+      await createWrapper({
+        data: MOCK_ISSUES,
+        fields: MOCK_FIELDS,
+        provide: { getVisualizationTitle: () => 'Group comparison' },
+      });
+
+      const caption = wrapper.findByTestId('table-caption');
+      expect(caption.text()).toBe('Group comparison');
+      expect(caption.classes()).toContain('gl-sr-only');
+    });
+
+    it('has no caption outside a dashboard panel', async () => {
+      await createWrapper({ data: MOCK_ISSUES, fields: MOCK_FIELDS });
+
+      expect(wrapper.findByTestId('table-caption').exists()).toBe(false);
+    });
+  });
+
+  describe('description', () => {
+    const FIELDS = [
+      { key: 'usersCount', label: 'Users', name: 'usersCount', type: 'metric' },
+      { key: 'totalCount', label: 'Sessions', name: 'totalCount', type: 'metric' },
+    ];
+    const DATA = { nodes: [{ usersCount: 1747, totalCount: 18294 }] };
+
+    const findDescription = () => wrapper.findByTestId('description');
+
+    const createTable = (moreProps) => createWrapper({ data: DATA, fields: FIELDS, ...moreProps });
+
+    it('renders no description when the block sets none', async () => {
+      await createTable();
+
+      expect(findDescription().exists()).toBe(false);
+    });
+
+    it('renders a static description above the table', async () => {
+      await createTable({ displayConfig: { description: 'All of Capsule Corp' } });
+
+      expect(findDescription().text()).toBe('All of Capsule Corp');
+    });
+
+    it('fills each placeholder with its formatted value', async () => {
+      await createTable({
+        displayConfig: {
+          description: 'Shares are of the %{usersCount} users and the %{totalCount} sessions.',
+        },
+      });
+
+      expect(findDescription().text()).toBe(
+        'Shares are of the 1,747 users and the 18,294 sessions.',
+      );
+    });
+
+    describe('when the result has no rows', () => {
+      it('renders a static description', async () => {
+        await createTable({
+          data: { nodes: [] },
+          displayConfig: { description: 'All of Capsule Corp' },
+        });
+
+        expect(findDescription().text()).toBe('All of Capsule Corp');
+      });
+
+      it('renders the no-data placeholder for each quoted metric', async () => {
+        await createTable({
+          data: { nodes: [] },
+          displayConfig: { description: '%{usersCount} users' },
+        });
+
+        expect(findDescription().text()).toBe('— users');
+      });
+    });
+
+    describe('while loading', () => {
+      it('renders a static description', async () => {
+        await createTable({
+          data: { nodes: [] },
+          loading: true,
+          displayConfig: { description: 'All of Capsule Corp' },
+        });
+
+        expect(findDescription().text()).toBe('All of Capsule Corp');
+      });
+
+      it('renders no description that quotes a metric', async () => {
+        await createTable({
+          data: { nodes: [] },
+          loading: true,
+          displayConfig: { description: '%{usersCount} users' },
+        });
+
+        expect(findDescription().exists()).toBe(false);
+      });
+    });
+
+    // A placeholder reads the first row, which with a dimension is only one group.
+    it('emits an error for a placeholder when the query has a dimension', async () => {
+      await createTable({
+        data: MOCK_AGGREGATED_DATA_ONE_DIM,
+        fields: MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+        displayConfig: { description: '%{totalCount} sessions' },
+      });
+
+      expect(wrapper.emitted('error')[0][0].message).toBe(
+        'Description placeholders cannot be used with dimensions.',
+      );
+    });
+
+    it('renders a static description when the query has a dimension', async () => {
+      await createTable({
+        data: MOCK_AGGREGATED_DATA_ONE_DIM,
+        fields: MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+        displayConfig: { description: 'Sessions by language' },
+      });
+
+      expect(wrapper.emitted('error')).toBeUndefined();
+      expect(findDescription().text()).toBe('Sessions by language');
+    });
+
+    it('emits an error for a placeholder naming a metric the query does not select', async () => {
+      await createTable({ displayConfig: { description: 'Across %{creditsUsedSum} credits' } });
+
+      expect(wrapper.emitted('error')[0][0].message).toBe(
+        'Unknown description placeholder: `creditsUsedSum`.',
+      );
+    });
+
+    describe('hiddenMetrics', () => {
+      const headerCells = () =>
+        wrapper.findAllComponents(ThResizable).wrappers.map((th) => th.text());
+
+      it('keeps a quoted metric as a column when hiddenMetrics does not name it', async () => {
+        await createTable({ displayConfig: { description: '%{usersCount} users' } });
+
+        expect(headerCells()).toEqual(['Users', 'Sessions']);
+      });
+
+      it('leaves a hidden metric out of the columns but still fills its placeholder', async () => {
+        await createTable({
+          displayConfig: { description: '%{usersCount} users', hiddenMetrics: ['usersCount'] },
+        });
+
+        expect(headerCells()).toEqual(['Sessions']);
+        expect(findDescription().text()).toBe('1,747 users');
+      });
+
+      it('emits an error for a metric the query does not select', async () => {
+        await createTable({ displayConfig: { hiddenMetrics: ['creditsUsedSum'] } });
+
+        expect(wrapper.emitted('error')[0][0].message).toBe(
+          'Unknown metric for `hiddenMetrics`: `creditsUsedSum`.',
+        );
+      });
+    });
+  });
+
+  describe('columnWidths', () => {
+    const createTable = (displayConfig) =>
+      createWrapper({
+        data: MOCK_AGGREGATED_DATA_ONE_DIM,
+        fields: MOCK_AGGREGATED_FIELDS_ONE_DIM_ONE_METRIC,
+        displayConfig,
+      });
+    const FIXED_LAYOUT_CLASS = '[&>table]:gl-table-fixed';
+    const findTableWrapper = () => wrapper.find('.gl-table-shadow');
+    const headerWidths = () =>
+      wrapper.findAllComponents(ThResizable).wrappers.map((th) => th.element.style.width);
+    const truncatedCells = () => wrapper.findAllByTestId('truncated-cell');
+
+    it('keeps the automatic layout when no widths are set', async () => {
+      await createTable();
+
+      expect(findTableWrapper().classes()).not.toContain(FIXED_LAYOUT_CLASS);
+      expect(headerWidths()).toEqual(['', '']);
+      expect(truncatedCells()).toHaveLength(0);
+    });
+
+    it('fixes the layout and truncates the cells of a sized column', async () => {
+      await createTable({ columnWidths: { language: 40 } });
+
+      expect(findTableWrapper().classes()).toContain(FIXED_LAYOUT_CLASS);
+      expect(headerWidths()).toEqual(['40%', '']);
+      expect(truncatedCells()).toHaveLength(MOCK_AGGREGATED_DATA_ONE_DIM.nodes.length);
+    });
+
+    it('titles a cell with its full text only when the text is cut off', async () => {
+      await createTable({ columnWidths: { language: 40 } });
+      const cell = truncatedCells().at(0);
+
+      await cell.trigger('mouseenter');
+      expect(cell.attributes('title')).toBe('');
+
+      Object.defineProperty(cell.element, 'scrollWidth', { value: 200 });
+      Object.defineProperty(cell.element, 'clientWidth', { value: 100 });
+      await cell.trigger('mouseenter');
+      expect(cell.attributes('title')).toBe(cell.text());
+    });
+
+    it.each`
+      columnWidths           | message
+      ${{ language: '40%' }} | ${'`columnWidths` must map column names to percentages between 1 and 100.'}
+      ${{ language: 0 }}     | ${'`columnWidths` must map column names to percentages between 1 and 100.'}
+      ${['language']}        | ${'`columnWidths` must map column names to percentages between 1 and 100.'}
+      ${{ project: 30 }}     | ${'Unknown column for `columnWidths`: `project`.'}
+    `('emits an error for $columnWidths', async ({ columnWidths, message }) => {
+      await createTable({ columnWidths });
+
+      expect(wrapper.emitted('error')[0][0].message).toBe(message);
+      expect(findTableWrapper().classes()).not.toContain(FIXED_LAYOUT_CLASS);
+    });
+  });
+});

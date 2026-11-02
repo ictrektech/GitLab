@@ -1,0 +1,30 @@
+# @feature_category: knowledge_graph
+query getOrbitDashboardGroups($first: Int = 50) {
+  orbit @gl_introduced(version: "19.4.0") {
+    memberGroups(enabled: true, first: $first) @gl_introduced(version: "19.4.0") {
+      nodes {
+        id
+        name
+        fullName
+        fullPath
+        avatarUrl
+        orbit {
+          enabled @gl_introduced(version: "19.4.0")
+          enabledAt
+          indexing @gl_introduced(version: "19.4.0") {
+            state
+            areas {
+              name
+              state
+            }
+            projects {
+              indexed
+              totalKnown
+              gaps
+            }
+          }
+        }
+      }
+    }
+  }
+}

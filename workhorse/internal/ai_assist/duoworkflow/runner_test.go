@@ -1,0 +1,3165 @@
+package duoworkflow
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	pb "gitlab.com/gitlab-org/modelops/applied-ml/code-suggestions/ai-assist/clients/gopb/contract"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	"gitlab.com/gitlab-org/gitlab/workhorse/internal/api"
+)
+
+// wsClientOf returns the WebSocket transport behind a runner's clientTransport,
+// for assertions on state that is specific to the WebSocket implementation.
+func wsClientOf(t *testing.T, r *runner) *wsManager {
+	t.Helper()
+
+	ws, ok := r.client.(*wsManager)
+	require.True(t, ok, "runner client is not a *wsManager")
+
+	return ws
+}
+
+type mockWebSocketConn struct {
+	readMessages       [][]byte
+	writeMessages      [][]byte
+	readDeadlinesMu    sync.Mutex
+	readDeadlines      []time.Time
+	writeDeadlines     []time.Time
+	readIndex          int
+	readError          error
+	writeError         error
+	closeError         error
+	closeCalls         int
+	writeControlError  error
+	setDeadlineError   error
+	clearDeadlineError error
+	blockCh            chan bool
+	pongHandlerMu      sync.Mutex
+	pongHandler        func(string) error
+}
+
+func (m *mockWebSocketConn) ReadMessage() (int, []byte, error) {
+	if m.blockCh != nil {
+		<-m.blockCh
+	}
+
+	if m.readError != nil {
+		return 0, nil, m.readError
+	}
+	if m.readIndex >= len(m.readMessages) {
+		return 0, nil, io.EOF
+	}
+	msg := m.readMessages[m.readIndex]
+	m.readIndex++
+	return websocket.BinaryMessage, msg, nil
+}
+
+func (m *mockWebSocketConn) WriteMessage(_ int, data []byte) error {
+	if m.writeError != nil {
+		return m.writeError
+	}
+	// Copy rather than alias: gorilla writes the caller's slice out
+	// synchronously and never retains it, and WriteAction returns its buffer
+	// to a shared pool once the write completes.
+	m.writeMessages = append(m.writeMessages, append([]byte(nil), data...))
+	return nil
+}
+
+func (m *mockWebSocketConn) Close() error {
+	m.closeCalls++
+	return m.closeError
+}
+
+func (m *mockWebSocketConn) WriteControl(_ int, data []byte, _ time.Time) error {
+	if m.writeControlError != nil {
+		return m.writeControlError
+	}
+	// Mirror gorilla's real WriteControl, which rejects any control frame whose
+	// payload exceeds the WebSocket 125-byte limit. The previous mock ignored
+	// the payload and silently accepted oversized close reasons, hiding the
+	// dropped-4400 regression this test now guards against.
+	const maxControlFramePayloadSize = 125
+	if len(data) > maxControlFramePayloadSize {
+		return errors.New("websocket: invalid control frame")
+	}
+	return nil
+}
+
+func (m *mockWebSocketConn) SetReadDeadline(t time.Time) error {
+	m.readDeadlinesMu.Lock()
+	defer m.readDeadlinesMu.Unlock()
+	m.readDeadlines = append(m.readDeadlines, t)
+	return m.setDeadlineError
+}
+
+func (m *mockWebSocketConn) getReadDeadlines() []time.Time {
+	m.readDeadlinesMu.Lock()
+	defer m.readDeadlinesMu.Unlock()
+	result := make([]time.Time, len(m.readDeadlines))
+	copy(result, m.readDeadlines)
+	return result
+}
+
+func (m *mockWebSocketConn) SetWriteDeadline(t time.Time) error {
+	m.writeDeadlines = append(m.writeDeadlines, t)
+	if t.IsZero() {
+		return m.clearDeadlineError
+	}
+	return m.setDeadlineError
+}
+
+func (m *mockWebSocketConn) SetPongHandler(h func(string) error) {
+	m.pongHandlerMu.Lock()
+	defer m.pongHandlerMu.Unlock()
+	m.pongHandler = h
+}
+
+func (m *mockWebSocketConn) getPongHandler() func(string) error {
+	m.pongHandlerMu.Lock()
+	defer m.pongHandlerMu.Unlock()
+	return m.pongHandler
+}
+
+type mockWorkflowStream struct {
+	sendEvents     []*pb.ClientEvent
+	sendMu         sync.Mutex
+	closeSendCalls int
+	recvActions    []*pb.Action
+	recvIndex      int
+	sendError      error
+	recvError      error
+	blockCh        chan bool
+}
+
+func (m *mockWorkflowStream) getSendEvents() []*pb.ClientEvent {
+	m.sendMu.Lock()
+	defer m.sendMu.Unlock()
+
+	return m.sendEvents
+}
+
+func (m *mockWorkflowStream) Send(event *pb.ClientEvent) error {
+	m.sendMu.Lock()
+	defer m.sendMu.Unlock()
+
+	if m.sendError != nil {
+		return m.sendError
+	}
+	m.sendEvents = append(m.sendEvents, event)
+	return nil
+}
+
+func (m *mockWorkflowStream) Recv() (*pb.Action, error) {
+	if m.blockCh != nil {
+		<-m.blockCh
+	}
+
+	if m.recvError != nil {
+		return nil, m.recvError
+	}
+	if m.recvIndex >= len(m.recvActions) {
+		return nil, io.EOF
+	}
+	action := m.recvActions[m.recvIndex]
+	m.recvIndex++
+	return action, nil
+}
+
+func (m *mockWorkflowStream) CloseSend() error {
+	m.closeSendCalls++
+	return nil
+}
+
+type mockSelfHostedWorkflowStream struct {
+	sendEvents  []*pb.TrackSelfHostedClientEvent
+	sendMu      sync.Mutex
+	recvActions []*pb.TrackSelfHostedAction
+	recvIndex   int
+	sendError   error
+	recvError   error
+	blockCh     chan bool
+}
+
+func (m *mockSelfHostedWorkflowStream) getSendEvents() []*pb.TrackSelfHostedClientEvent {
+	m.sendMu.Lock()
+	defer m.sendMu.Unlock()
+
+	return m.sendEvents
+}
+
+func (m *mockSelfHostedWorkflowStream) Send(event *pb.TrackSelfHostedClientEvent) error {
+	m.sendMu.Lock()
+	defer m.sendMu.Unlock()
+
+	if m.sendError != nil {
+		return m.sendError
+	}
+	m.sendEvents = append(m.sendEvents, event)
+	return nil
+}
+
+func (m *mockSelfHostedWorkflowStream) Recv() (*pb.TrackSelfHostedAction, error) {
+	if m.blockCh != nil {
+		<-m.blockCh
+	}
+
+	if m.recvError != nil {
+		return nil, m.recvError
+	}
+	if m.recvIndex >= len(m.recvActions) {
+		return nil, io.EOF
+	}
+	action := m.recvActions[m.recvIndex]
+	m.recvIndex++
+	return action, nil
+}
+
+func (m *mockSelfHostedWorkflowStream) CloseSend() error {
+	if m == nil {
+		return nil
+	}
+	return nil
+}
+
+type mockMcpManager struct {
+	tools               []*pb.McpTool
+	preApprovedTools    []string
+	hasToolResult       bool
+	callToolResult      *pb.ClientEvent
+	callToolError       error
+	closeError          error
+	callToolInvocations []struct {
+		name string
+		args string
+	}
+}
+
+func (m *mockMcpManager) HasTool(_ string) bool {
+	if m == nil {
+		return false
+	}
+
+	return m.hasToolResult
+}
+
+func (m *mockMcpManager) Tools() []*pb.McpTool {
+	if m == nil {
+		return nil
+	}
+
+	return m.tools
+}
+
+func (m *mockMcpManager) PreApprovedTools() []string {
+	if m == nil {
+		return nil
+	}
+
+	return m.preApprovedTools
+}
+
+func (m *mockMcpManager) CallTool(_ context.Context, action *pb.Action) (*pb.ClientEvent, error) {
+	mcpTool := action.GetRunMCPTool()
+
+	m.callToolInvocations = append(m.callToolInvocations, struct {
+		name string
+		args string
+	}{name: mcpTool.Name, args: mcpTool.Args})
+
+	if m.callToolError != nil {
+		return nil, m.callToolError
+	}
+	return m.callToolResult, nil
+}
+
+func (m *mockMcpManager) Close() error {
+	if m == nil {
+		return nil
+	}
+
+	return m.closeError
+}
+
+func Test_newRunner(t *testing.T) {
+	server := setupTestServer(t)
+	mockConn := &mockWebSocketConn{}
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", api.ResponseContentType)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	apiURL, err := url.Parse(apiServer.URL)
+	require.NoError(t, err)
+
+	apiClient := api.NewAPI(apiURL, "test-version", http.DefaultTransport)
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	cfg := &api.DuoWorkflow{
+		Service: &api.DuoWorkflowServiceConfig{
+			URI: server.Addr,
+			Headers: map[string]string{
+				"Authorization":        "Bearer test-token",
+				"x-gitlab-oauth-token": "oauth-token-123",
+			},
+			Secure: false,
+		},
+		LockConcurrentFlow: true,
+	}
+
+	setupLabels := map[string]string{"stage": setupStageGRPC}
+	grpcSetups := histogramSampleCount(t, "gitlab_workhorse_duo_workflow_session_setup_duration_seconds", setupLabels)
+
+	runner, err := newRunner(newWsManager(mockConn), apiClient, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), "", req, cfg, initRdb(t))
+
+	require.NoError(t, err)
+	require.NotNil(t, runner)
+	require.Equal(t, grpcSetups+1, histogramSampleCount(t, "gitlab_workhorse_duo_workflow_session_setup_duration_seconds", setupLabels))
+	require.Equal(t, "oauth-token-123", runner.httpActionHandler.token)
+	require.Equal(t, req, runner.session.req)
+	// The workflow ID recorded on the start request must reach every part of the run.
+	require.Same(t, runner.session, runner.httpActionHandler.session)
+	require.Same(t, runner.session, runner.streamManager.session)
+	require.Equal(t, mockConn, wsClientOf(t, runner).conn)
+	require.NotNil(t, runner.streamManager)
+
+	runner.Close()
+}
+
+func Test_gitlabToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      *api.DuoWorkflow
+		expected string
+	}{
+		{
+			name: "prefers GitlabToken",
+			cfg: &api.DuoWorkflow{
+				GitlabToken: "field-token",
+				Service: &api.DuoWorkflowServiceConfig{
+					Headers: map[string]string{"x-gitlab-oauth-token": "header-token"},
+				},
+			},
+			expected: "field-token",
+		},
+		{
+			name: "falls back to the Duo Workflow Service header",
+			cfg: &api.DuoWorkflow{
+				Service: &api.DuoWorkflowServiceConfig{
+					Headers: map[string]string{"x-gitlab-oauth-token": "header-token"},
+				},
+			},
+			expected: "header-token",
+		},
+		{
+			name: "works without the header",
+			cfg: &api.DuoWorkflow{
+				GitlabToken: "field-token",
+				Service:     &api.DuoWorkflowServiceConfig{Headers: map[string]string{}},
+			},
+			expected: "field-token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, gitlabToken(tt.cfg))
+		})
+	}
+}
+
+func Test_newRunner_WithServerCapabilities(t *testing.T) {
+	server := setupTestServer(t)
+	mockConn := &mockWebSocketConn{}
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", api.ResponseContentType)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	apiURL, err := url.Parse(apiServer.URL)
+	require.NoError(t, err)
+
+	apiClient := api.NewAPI(apiURL, "test-version", http.DefaultTransport)
+
+	tests := []struct {
+		name               string
+		serverCapabilities []string
+	}{
+		{
+			name:               "with capabilities",
+			serverCapabilities: []string{"advanced_search"},
+		},
+		{
+			name:               "without capabilities",
+			serverCapabilities: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/duo", nil)
+			cfg := &api.DuoWorkflow{
+				Service: &api.DuoWorkflowServiceConfig{
+					URI:     server.Addr,
+					Headers: map[string]string{},
+					Secure:  false,
+				},
+				ServerCapabilities: tt.serverCapabilities,
+				LockConcurrentFlow: false,
+			}
+
+			runner, err := newRunner(newWsManager(mockConn), apiClient, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), "", req, cfg, nil)
+
+			require.NoError(t, err)
+			require.Equal(t, tt.serverCapabilities, runner.serverCapabilities)
+
+			runner.Close()
+		})
+	}
+}
+
+func Test_newRunner_WithoutRedis(t *testing.T) {
+	server := setupTestServer(t)
+	mockConn := &mockWebSocketConn{}
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", api.ResponseContentType)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	apiURL, err := url.Parse(apiServer.URL)
+	require.NoError(t, err)
+
+	apiClient := api.NewAPI(apiURL, "test-version", http.DefaultTransport)
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	cfg := &api.DuoWorkflow{
+		Service: &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		},
+		LockConcurrentFlow: true,
+	}
+
+	runner, err := newRunner(newWsManager(mockConn), apiClient, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), "", req, cfg, nil)
+
+	require.NoError(t, err)
+	require.False(t, runner.lease.enabled())
+
+	runner.Close()
+}
+
+func Test_newRunner_WithCloudConnector(t *testing.T) {
+	server := setupTestServer(t)
+	mockConn := &mockWebSocketConn{}
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", api.ResponseContentType)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	apiURL, err := url.Parse(apiServer.URL)
+	require.NoError(t, err)
+
+	apiClient := api.NewAPI(apiURL, "test-version", http.DefaultTransport)
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	cfg := &api.DuoWorkflow{
+		Service: &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		},
+		CloudServiceForSelfHosted: &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{"Authorization": "Bearer cloud-token"},
+			Secure:  false,
+		},
+		LockConcurrentFlow: false,
+	}
+
+	runner, err := newRunner(newWsManager(mockConn), apiClient, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), "", req, cfg, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, runner.streamManager.cloudServiceClient)
+	require.NotNil(t, runner.streamManager.cloudServiceStream)
+
+	runner.Close()
+}
+
+func Test_newRunner_WithoutCloudConnector(t *testing.T) {
+	server := setupTestServer(t)
+	mockConn := &mockWebSocketConn{}
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", api.ResponseContentType)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer apiServer.Close()
+
+	apiURL, err := url.Parse(apiServer.URL)
+	require.NoError(t, err)
+
+	apiClient := api.NewAPI(apiURL, "test-version", http.DefaultTransport)
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	cfg := &api.DuoWorkflow{
+		Service: &api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		},
+		CloudServiceForSelfHosted: nil,
+		LockConcurrentFlow:        false,
+	}
+
+	runner, err := newRunner(newWsManager(mockConn), apiClient, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), "", req, cfg, nil)
+
+	require.NoError(t, err)
+	require.Nil(t, runner.streamManager.cloudServiceClient)
+	require.Nil(t, runner.streamManager.cloudServiceStream)
+
+	runner.Close()
+}
+
+func TestRunner_Execute(t *testing.T) {
+	tests := []struct {
+		name            string
+		wsMessages      [][]byte
+		recvActions     []*pb.Action
+		writeMsgCount   int
+		sendEventsCount int
+		expectedErrMsg  string
+		wsBlockCh       chan bool
+		wfBlockCh       chan bool
+	}{
+		{
+			name:            "ws messages",
+			wsMessages:      [][]byte{[]byte(`{"type": "test"}`), []byte(`{"type": "test2"}`)},
+			wfBlockCh:       make(chan bool),
+			sendEventsCount: 2,
+			expectedErrMsg:  "handleClientEvents: failed to read a client event: EOF",
+		},
+		{
+			name: "wf actions",
+			recvActions: []*pb.Action{{
+				Action: &pb.Action_RunCommand{
+					RunCommand: &pb.RunCommandAction{
+						Program: "ls",
+					},
+				},
+			}, {
+				Action: &pb.Action_RunCommand{
+					RunCommand: &pb.RunCommandAction{
+						Program: "ls",
+					},
+				},
+			}},
+			writeMsgCount:  2,
+			wsBlockCh:      make(chan bool),
+			expectedErrMsg: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockConn := &mockWebSocketConn{
+				readMessages: tt.wsMessages,
+				blockCh:      tt.wsBlockCh,
+			}
+			mockWf := &mockWorkflowStream{
+				recvActions: tt.recvActions,
+				blockCh:     tt.wfBlockCh,
+			}
+
+			req := httptest.NewRequest("GET", "/duo", nil)
+			sess := newSession(req)
+			r := &runner{
+				session: sess,
+				client:  newWsManager(mockConn),
+				httpActionHandler: &runHTTPActionHandler{
+					backend: http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+					token:   "test-token",
+					session: sess,
+				},
+				streamManager: &streamManager{
+					wf:      mockWf,
+					session: sess,
+				},
+			}
+
+			ctx := context.Background()
+			err := r.Execute(ctx)
+
+			if tt.expectedErrMsg != "" {
+				require.EqualError(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Len(t, mockWf.getSendEvents(), tt.sendEventsCount)
+			require.Len(t, mockConn.writeMessages, tt.writeMsgCount)
+		})
+	}
+}
+
+func TestRunner_Execute_with_errors(t *testing.T) {
+	tests := []struct {
+		name           string
+		wsReadError    error
+		wfRecvError    error
+		expectedErrMsg string
+		wsBlockCh      chan bool
+		wfBlockCh      chan bool
+	}{
+		{
+			name:           "websocket read error",
+			wsReadError:    errors.New("read error"),
+			wfBlockCh:      make(chan bool),
+			expectedErrMsg: "handleClientEvents: failed to read a client event: read error",
+		},
+		{
+			name:           "workflow recv error",
+			wfRecvError:    errors.New("recv error"),
+			wsBlockCh:      make(chan bool),
+			expectedErrMsg: "handleAgentMessages: failed to read a gRPC message: recv error",
+		},
+		{
+			name:           "workflow EOF error",
+			wfRecvError:    io.EOF,
+			wsBlockCh:      make(chan bool),
+			expectedErrMsg: "",
+		},
+		{
+			name:           "workflow usage quota exceeded error",
+			wfRecvError:    status.Error(codes.ResourceExhausted, "USAGE_QUOTA_EXCEEDED: consumer has exceeded their quota"),
+			wsBlockCh:      make(chan bool),
+			expectedErrMsg: "handleAgentMessages: usage quota exceeded",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockConn := &mockWebSocketConn{
+				readError: tt.wsReadError,
+				blockCh:   tt.wsBlockCh,
+			}
+			mockWf := &mockWorkflowStream{
+				recvError: tt.wfRecvError,
+				blockCh:   tt.wfBlockCh,
+			}
+
+			sess := newSession(httptest.NewRequest("GET", "/", nil))
+			r := &runner{
+				session: sess,
+				client:  newWsManager(mockConn),
+				streamManager: &streamManager{
+					session: sess,
+					wf:      mockWf,
+				},
+			}
+			err := r.Execute(context.Background())
+
+			if tt.expectedErrMsg != "" {
+				require.EqualError(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// timeoutError implements net.Error with Timeout() returning true,
+// simulating the i/o timeout produced when a WebSocket pong deadline expires.
+type timeoutError struct{}
+
+func (e *timeoutError) Error() string   { return "i/o timeout" }
+func (e *timeoutError) Timeout() bool   { return true }
+func (e *timeoutError) Temporary() bool { return false }
+
+func TestRunner_Execute_with_close_errors(t *testing.T) {
+	tests := []struct {
+		name           string
+		wsReadError    error
+		expectedReason string
+	}{
+		{
+			name:           "websocket normal closure",
+			wsReadError:    &websocket.CloseError{Code: websocket.CloseNormalClosure},
+			expectedReason: "WORKHORSE_WEBSOCKET_CLOSE_1000",
+		},
+		{
+			name:           "websocket going away",
+			wsReadError:    &websocket.CloseError{Code: websocket.CloseGoingAway},
+			expectedReason: "WORKHORSE_WEBSOCKET_CLOSE_1001",
+		},
+		{
+			name:           "websocket pong timeout",
+			wsReadError:    &timeoutError{},
+			expectedReason: "WORKHORSE_WEBSOCKET_PONG_TIMEOUT",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blockCh := make(chan bool)
+			mockConn := &mockWebSocketConn{
+				readError: tt.wsReadError,
+			}
+			mockWf := &mockWorkflowStream{
+				recvError: io.EOF,
+				blockCh:   blockCh,
+			}
+
+			req := httptest.NewRequest("GET", "/duo", nil)
+			stopAcked := make(chan struct{})
+			sess := newSession(req)
+			r := &runner{
+				client:  newWsManager(mockConn),
+				session: sess,
+				streamManager: &streamManager{
+					wf:      mockWf,
+					session: sess,
+				},
+				stop: stopCoordinator{
+					acked: stopAcked,
+				},
+			}
+
+			errCh := make(chan error, 1)
+			go func() { errCh <- r.Execute(context.Background()) }()
+
+			require.Eventually(t, func() bool {
+				return len(mockWf.getSendEvents()) == 1
+			}, 2*time.Second, 50*time.Millisecond)
+
+			require.True(t, wsClientOf(t, r).closed.Load())
+
+			// Simulate DWS acknowledging the stop request
+			r.stop.acknowledge()
+			blockCh <- true // Unblock WF stream
+			require.NoError(t, <-errCh)
+
+			stopEvent := mockWf.getSendEvents()[0].GetStopWorkflow()
+			require.NotNil(t, stopEvent)
+			require.Equal(t, tt.expectedReason, stopEvent.Reason)
+		})
+	}
+}
+
+func TestRunner_handleClientEvent(t *testing.T) {
+	tests := []struct {
+		name               string
+		message            []byte
+		clientCapabilities []string
+		serverCapabilities []string
+		sendError          error
+		mcpManager         *mockMcpManager
+		expectedErrMsg     string
+		expectMcpTools     bool
+		expectServerTrust  bool
+	}{
+		{
+			name:           "send error",
+			message:        []byte(`{"type": "test"}`),
+			sendError:      errors.New("send error"),
+			expectedErrMsg: "handleClientEvent: failed to write a gRPC message: send error",
+		},
+		{
+			name:           "send EOF error",
+			message:        []byte(`{"type": "test"}`),
+			sendError:      io.EOF,
+			expectedErrMsg: "",
+		},
+		{
+			name:           "successful message handling",
+			message:        []byte(`{"type": "test"}`),
+			expectedErrMsg: "",
+		},
+		{
+			name:               "start request with mcp tools",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "mcpTools": [{"name": "get_issue"}]}}`),
+			clientCapabilities: []string{},
+			mcpManager: &mockMcpManager{
+				tools: []*pb.McpTool{
+					{Name: "test_tool", Description: "A test tool"},
+				},
+			},
+			expectMcpTools: true,
+			expectedErrMsg: "",
+		},
+		{
+			name:               "start request strips trusted from client mcp tools",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "mcpTools": [{"name": "get_issue", "trusted": true}]}}`),
+			clientCapabilities: []string{},
+			mcpManager: &mockMcpManager{
+				tools: []*pb.McpTool{
+					{Name: "test_tool", Description: "A test tool", Trusted: proto.Bool(true)},
+				},
+			},
+			expectMcpTools:    true,
+			expectServerTrust: true,
+			expectedErrMsg:    "",
+		},
+		{
+			name:               "start request without mcp manager",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal"}}`),
+			clientCapabilities: []string{},
+			mcpManager:         nil,
+			expectMcpTools:     false,
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with supported and unsupported ClientCapabilities",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["shell_command", "incremental_streaming", "read_file_chunked", "command_timeout", "unsupported_capability"]}}`),
+			clientCapabilities: []string{"shell_command", "incremental_streaming", "read_file_chunked", "command_timeout"},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with server capabilities",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["shell_command", "read_file_chunked", "command_timeout"]}}`),
+			clientCapabilities: []string{"shell_command", "read_file_chunked", "command_timeout", "advanced_search"},
+			serverCapabilities: []string{"advanced_search"},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request without server capabilities",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["shell_command", "read_file_chunked", "command_timeout"]}}`),
+			clientCapabilities: []string{"shell_command", "read_file_chunked", "command_timeout"},
+			serverCapabilities: []string{},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with tool_call_approval server capability",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": []}}`),
+			clientCapabilities: []string{"tool_call_approval"},
+			serverCapabilities: []string{"tool_call_approval"},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with multiple server capabilities including tool_call_approval",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["shell_command"]}}`),
+			clientCapabilities: []string{"shell_command", "advanced_search", "tool_call_approval"},
+			serverCapabilities: []string{"advanced_search", "tool_call_approval"},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with web_search client capability",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["web_search"]}}`),
+			clientCapabilities: []string{"web_search"},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with web_search and other client capabilities",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["shell_command", "web_search"]}}`),
+			clientCapabilities: []string{"shell_command", "web_search"},
+			expectedErrMsg:     "",
+		},
+		{
+			name:               "start request with unknown web_search variant is filtered out",
+			message:            []byte(`{"startRequest": {"workflowID": "id-123", "goal": "test goal", "clientCapabilities": ["web_search_unknown"]}}`),
+			clientCapabilities: []string{},
+			expectedErrMsg:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockWf := &mockWorkflowStream{
+				sendError: tt.sendError,
+			}
+
+			rdb := initRdb(t)
+
+			req := httptest.NewRequest("GET", "/duo", nil)
+			sess := newSession(req)
+			r := &runner{
+				session: sess,
+				client:  newWsManager(&mockWebSocketConn{}),
+				httpActionHandler: &runHTTPActionHandler{
+					backend: http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+					token:   "test-token",
+					session: sess,
+				},
+				streamManager: &streamManager{
+					wf:      mockWf,
+					session: sess,
+				},
+				mcpManager:         tt.mcpManager,
+				lease:              newWorkflowLease(newWorkflowLockManager(rdb)),
+				serverCapabilities: tt.serverCapabilities,
+			}
+
+			event := &pb.ClientEvent{}
+			require.NoError(t, unmarshaler.Unmarshal(tt.message, event))
+
+			err := r.handleClientEvent(event)
+
+			if tt.expectedErrMsg != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+
+				if tt.expectMcpTools {
+					require.Len(t, mockWf.sendEvents, 1)
+					startReq := mockWf.sendEvents[0].GetStartRequest()
+					require.NotNil(t, startReq)
+					require.Len(t, startReq.McpTools, 2)
+					assert.Equal(t, "get_issue", startReq.McpTools[0].Name)
+					assert.Nil(t, startReq.McpTools[0].Trusted)
+					assert.Equal(t, "test_tool", startReq.McpTools[1].Name)
+					assert.Equal(t, "A test tool", startReq.McpTools[1].Description)
+					assert.Equal(t, tt.expectServerTrust, startReq.McpTools[1].GetTrusted())
+					assert.True(t, startReq.McpTools[0].GetClientInjected(),
+						"the client's own tool must be stamped")
+					assert.False(t, startReq.McpTools[1].GetClientInjected(),
+						"tools Workhorse fetched stay unstamped so DWS keeps governing them")
+				}
+
+				if tt.clientCapabilities != nil {
+					require.Len(t, mockWf.sendEvents, 1)
+					startReq := mockWf.sendEvents[0].GetStartRequest()
+					require.NotNil(t, startReq)
+					assert.ElementsMatch(t, tt.clientCapabilities, startReq.ClientCapabilities)
+				}
+
+				assert.Equal(t, event.GetStartRequest().GetWorkflowID(), r.session.WorkflowID())
+			}
+		})
+	}
+}
+
+func TestActionDispatcher_dispatch(t *testing.T) {
+	tests := []struct {
+		name           string
+		action         *pb.Action
+		wsWriteError   error
+		wfSendError    error
+		mcpManager     *mockMcpManager
+		expectedErrMsg string
+		shouldCallWS   bool
+		shouldCallWF   bool
+		shouldCallMcp  bool
+	}{
+		{
+			name: "successful HTTP request action",
+			action: &pb.Action{
+				RequestID: "req-123",
+				Action: &pb.Action_RunHTTPRequest{
+					RunHTTPRequest: &pb.RunHTTPRequest{
+						Method: "GET",
+						Path:   "/api/test",
+					},
+				},
+			},
+			shouldCallWF: true,
+		},
+		{
+			name: "HTTP request action with workflow send error",
+			action: &pb.Action{
+				RequestID: "req-456",
+				Action: &pb.Action_RunHTTPRequest{
+					RunHTTPRequest: &pb.RunHTTPRequest{
+						Method: "GET",
+						Path:   "/api/test",
+					},
+				},
+			},
+			wfSendError:    errors.New("workflow send failed"),
+			expectedErrMsg: "dispatch: failed to send gRPC message: workflow send failed",
+		},
+		{
+			name: "successful non-HTTP action forwarded to websocket",
+			action: &pb.Action{
+				RequestID: "req-789",
+				Action: &pb.Action_RunCommand{
+					RunCommand: &pb.RunCommandAction{
+						Program: "ls",
+					},
+				},
+			},
+			shouldCallWS: true,
+		},
+		{
+			name: "non-HTTP action with websocket write error",
+			action: &pb.Action{
+				RequestID: "req-error",
+				Action: &pb.Action_RunCommand{
+					RunCommand: &pb.RunCommandAction{
+						Program: "ls",
+					},
+				},
+			},
+			wsWriteError:   errors.New("websocket write failed"),
+			expectedErrMsg: "WriteAction: failed to send WS message: websocket write failed",
+		},
+		{
+			name: "non-HTTP action with websocket write close sent error",
+			action: &pb.Action{
+				RequestID: "req-error",
+				Action: &pb.Action_RunCommand{
+					RunCommand: &pb.RunCommandAction{
+						Program: "ls",
+					},
+				},
+			},
+			wsWriteError: websocket.ErrCloseSent,
+		},
+		{
+			name: "action with nil action type",
+			action: &pb.Action{
+				RequestID: "req-nil",
+				Action:    nil,
+			},
+			shouldCallWS: true,
+		},
+		{
+			name: "MCP tool action with mcp manager",
+			action: &pb.Action{
+				RequestID: "req-mcp-123",
+				Action: &pb.Action_RunMCPTool{
+					RunMCPTool: &pb.RunMCPTool{
+						Name: "gitlab_get_issue",
+						Args: `{"issue_id": "123"}`,
+					},
+				},
+			},
+			mcpManager: &mockMcpManager{
+				hasToolResult: true,
+				callToolResult: &pb.ClientEvent{
+					Response: &pb.ClientEvent_ActionResponse{
+						ActionResponse: &pb.ActionResponse{
+							ResponseType: &pb.ActionResponse_PlainTextResponse{
+								PlainTextResponse: &pb.PlainTextResponse{
+									Response: `{"id": 123, "title": "Test Issue"}`,
+								},
+							},
+						},
+					},
+				},
+			},
+			shouldCallMcp: true,
+			shouldCallWF:  true,
+		},
+		{
+			name: "MCP tool action without mcp manager",
+			action: &pb.Action{
+				RequestID: "req-mcp-no-manager",
+				Action: &pb.Action_RunMCPTool{
+					RunMCPTool: &pb.RunMCPTool{
+						Name: "gitlab_get_issue",
+						Args: `{"issue_id": "123"}`,
+					},
+				},
+			},
+			mcpManager:   nil,
+			shouldCallWS: true,
+		},
+		{
+			name: "MCP tool action with tool not recognized",
+			action: &pb.Action{
+				RequestID: "req-mcp-unknown",
+				Action: &pb.Action_RunMCPTool{
+					RunMCPTool: &pb.RunMCPTool{
+						Name: "unknown_tool",
+						Args: `{"param": "value"}`,
+					},
+				},
+			},
+			mcpManager: &mockMcpManager{
+				hasToolResult: false,
+			},
+			shouldCallWS: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/test", r.URL.Path)
+				assert.Equal(t, "GET", r.Method)
+
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprint(w, `[{"id": 123, "name": "test-project"}]`)
+			}))
+			defer server.Close()
+
+			mockConn := &mockWebSocketConn{
+				writeError: tt.wsWriteError,
+			}
+			mockWf := &mockWorkflowStream{
+				sendError: tt.wfSendError,
+			}
+
+			req := httptest.NewRequest("GET", "/duo", nil)
+			sess := newSession(req)
+			r := &runner{
+				session: sess,
+				client:  newWsManager(mockConn),
+				httpActionHandler: &runHTTPActionHandler{
+					backend: createBackendHandler(server.Client(), server.Listener.Addr().String()),
+					token:   "test-token",
+					session: sess,
+				},
+				streamManager: &streamManager{
+					wf:      mockWf,
+					session: sess,
+				},
+				mcpManager: tt.mcpManager,
+			}
+
+			ctx := context.Background()
+			err := r.actionDispatcher().dispatch(ctx, tt.action)
+
+			if tt.expectedErrMsg != "" {
+				require.EqualError(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+
+			if tt.shouldCallWS {
+				require.Len(t, mockConn.writeMessages, 1, "Expected one WebSocket message to be written")
+			} else {
+				require.Empty(t, mockConn.writeMessages)
+			}
+
+			sendEvents := mockWf.getSendEvents()
+			if tt.shouldCallWF {
+				require.Len(t, sendEvents, 1, "Expected one workflow event to be sent")
+
+				if tt.action.GetRunHTTPRequest() != nil {
+					response := mockWf.sendEvents[0].Response.(*pb.ClientEvent_ActionResponse).ActionResponse
+					responseBody := response.ResponseType.(*pb.ActionResponse_HttpResponse).HttpResponse.Body
+					require.JSONEq(t, `[{"id": 123, "name": "test-project"}]`, responseBody)
+				}
+			} else {
+				require.Empty(t, sendEvents)
+			}
+
+			if tt.shouldCallMcp {
+				require.Len(t, tt.mcpManager.callToolInvocations, 1, "Expected MCP tool to be called")
+				mcpAction := tt.action.GetRunMCPTool()
+				require.Equal(t, mcpAction.Name, tt.mcpManager.callToolInvocations[0].name)
+				require.Equal(t, mcpAction.Args, tt.mcpManager.callToolInvocations[0].args)
+			}
+		})
+	}
+}
+
+// unsupportedActionTransport is a clientTransport whose client cannot execute
+// any action, like the ndjson transport used for server-side execution.
+type unsupportedActionTransport struct {
+	clientTransport
+	writtenActions []*pb.Action
+}
+
+func (t *unsupportedActionTransport) WriteAction(_ context.Context, action *pb.Action) error {
+	t.writtenActions = append(t.writtenActions, action)
+	return fmt.Errorf("%w: RunCommand", errActionUnsupported)
+}
+
+func TestActionDispatcher_dispatch_UnsupportedByClient(t *testing.T) {
+	transport := &unsupportedActionTransport{}
+	mockWf := &mockWorkflowStream{}
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	r := &runner{
+		session:       newSession(req),
+		client:        transport,
+		streamManager: newTestStreamManager(t, mockWf),
+		mcpManager:    &mockMcpManager{},
+	}
+
+	action := &pb.Action{
+		RequestID: "req-unsupported",
+		Action: &pb.Action_RunCommand{
+			RunCommand: &pb.RunCommandAction{Program: "ls"},
+		},
+	}
+
+	require.NoError(t, r.actionDispatcher().dispatch(context.Background(), action))
+
+	require.Len(t, transport.writtenActions, 1, "the action should still be offered to the client first")
+
+	sendEvents := mockWf.getSendEvents()
+	require.Len(t, sendEvents, 1, "DWS must get a response so the workflow does not stall")
+
+	response := sendEvents[0].GetActionResponse()
+	require.Equal(t, "req-unsupported", response.RequestID)
+	require.Equal(
+		t,
+		"action cannot be executed by this client: RunCommand",
+		response.GetPlainTextResponse().Error,
+	)
+	require.Empty(t, response.GetPlainTextResponse().Response)
+}
+
+func TestActionDispatcher_dispatch_UnknownMcpToolUnsupportedByClient(t *testing.T) {
+	transport := &unsupportedActionTransport{}
+	mockWf := &mockWorkflowStream{}
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	r := &runner{
+		session:       newSession(req),
+		client:        transport,
+		streamManager: newTestStreamManager(t, mockWf),
+		// hasTool defaults to false, so the tool is unknown to workhorse and
+		// would be forwarded to the client on the WebSocket transport.
+		mcpManager: &mockMcpManager{},
+	}
+
+	action := &pb.Action{
+		RequestID: "req-mcp-unknown",
+		Action: &pb.Action_RunMCPTool{
+			RunMCPTool: &pb.RunMCPTool{Name: "local_ide_tool"},
+		},
+	}
+
+	require.NoError(t, r.actionDispatcher().dispatch(context.Background(), action))
+
+	require.Len(t, transport.writtenActions, 1)
+	require.Empty(t, transport.writtenActions[0].GetRunMCPTool().Args)
+
+	sendEvents := mockWf.getSendEvents()
+	require.Len(t, sendEvents, 1)
+	require.Equal(t, "req-mcp-unknown", sendEvents[0].GetActionResponse().RequestID)
+	require.NotEmpty(t, sendEvents[0].GetActionResponse().GetPlainTextResponse().Error)
+}
+
+func TestActionDispatcher_dispatch_McpToolCallFails(t *testing.T) {
+	mockWf := &mockWorkflowStream{}
+	mcpManager := &mockMcpManager{
+		hasToolResult: true,
+		callToolError: errors.New("CallTool: failed to call MCP tool: 504 Gateway Timeout"),
+	}
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	r := &runner{
+		session:       newSession(req),
+		client:        newWsManager(&mockWebSocketConn{}),
+		streamManager: newTestStreamManager(t, mockWf),
+		mcpManager:    mcpManager,
+	}
+
+	action := &pb.Action{
+		RequestID: "req-mcp-error",
+		Action: &pb.Action_RunMCPTool{
+			RunMCPTool: &pb.RunMCPTool{Name: "orbit_invoke_command", Args: `{"command_name": "query_graph"}`},
+		},
+	}
+
+	require.NoError(t, r.actionDispatcher().dispatch(context.Background(), action), "a failed tool call must not end the workflow")
+
+	require.Len(t, mcpManager.callToolInvocations, 1)
+
+	sendEvents := mockWf.getSendEvents()
+	require.Len(t, sendEvents, 1, "DWS must get a response so the workflow does not stall")
+
+	response := sendEvents[0].GetActionResponse()
+	require.Equal(t, "req-mcp-error", response.RequestID)
+	require.Equal(t, "CallTool: failed to call MCP tool: 504 Gateway Timeout", response.GetPlainTextResponse().Error)
+	require.Empty(t, response.GetPlainTextResponse().Response)
+}
+
+func TestActionDispatcher_dispatch_UnsupportedActionSendFails(t *testing.T) {
+	transport := &unsupportedActionTransport{}
+	mockWf := &mockWorkflowStream{sendError: errors.New("stream closed")}
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	r := &runner{
+		session:       newSession(req),
+		client:        transport,
+		streamManager: newTestStreamManager(t, mockWf),
+		mcpManager:    &mockMcpManager{},
+	}
+
+	action := &pb.Action{
+		RequestID: "req-unsupported",
+		Action:    &pb.Action_RunCommand{RunCommand: &pb.RunCommandAction{Program: "ls"}},
+	}
+
+	require.EqualError(
+		t,
+		r.actionDispatcher().dispatch(context.Background(), action),
+		"dispatch: failed to send gRPC message: stream closed",
+	)
+}
+
+func TestRunner_Close_WithCloudConnector(t *testing.T) {
+	t.Run("successful close with cloud service", func(t *testing.T) {
+		server := setupTestServer(t)
+
+		// Create real clients to test the full close flow
+		mainClient, err := NewClient(&api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}, "test-agent", "")
+		require.NoError(t, err)
+
+		cloudClient, err := NewClient(&api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}, "test-agent", "")
+		require.NoError(t, err)
+
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+		mockCloudStream := &mockSelfHostedWorkflowStream{}
+
+		r := &runner{
+			session: newSession(httptest.NewRequest("GET", "/", nil)),
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				client:             mainClient,
+				cloudServiceStream: mockCloudStream,
+				cloudServiceClient: cloudClient,
+				session:            newSession(httptest.NewRequest(http.MethodGet, "/", nil)),
+			},
+			mcpManager: &mockMcpManager{},
+		}
+
+		err = r.Close()
+		require.NoError(t, err)
+	})
+
+	t.Run("close without cloud service", func(t *testing.T) {
+		server := setupTestServer(t)
+
+		mainClient, err := NewClient(&api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}, "test-agent", "")
+		require.NoError(t, err)
+
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+
+		r := &runner{
+			session: newSession(httptest.NewRequest("GET", "/", nil)),
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				client:             mainClient,
+				cloudServiceStream: nil,
+				cloudServiceClient: nil,
+				session:            newSession(httptest.NewRequest(http.MethodGet, "/", nil)),
+			},
+			mcpManager: &mockMcpManager{},
+		}
+
+		err = r.Close()
+		require.NoError(t, err)
+	})
+
+	t.Run("close with only cloud service stream", func(t *testing.T) {
+		server := setupTestServer(t)
+
+		mainClient, err := NewClient(&api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}, "test-agent", "")
+		require.NoError(t, err)
+
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+		mockCloudStream := &mockSelfHostedWorkflowStream{}
+
+		r := &runner{
+			session: newSession(httptest.NewRequest("GET", "/", nil)),
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				client:             mainClient,
+				cloudServiceStream: mockCloudStream,
+				cloudServiceClient: nil,
+				session:            newSession(httptest.NewRequest(http.MethodGet, "/", nil)),
+			},
+			mcpManager: &mockMcpManager{},
+		}
+
+		err = r.Close()
+		require.NoError(t, err)
+	})
+}
+
+func Test_intersectServerCapabilities(t *testing.T) {
+	tests := []struct {
+		name       string
+		fromServer []string
+		expected   []string
+	}{
+		{
+			name:       "filters to whitelisted capabilities",
+			fromServer: []string{"advanced_search", "unknown_capability"},
+			expected:   []string{"advanced_search"},
+		},
+		{
+			name:       "returns empty when no matches",
+			fromServer: []string{"unknown_capability", "another_unknown"},
+			expected:   []string{},
+		},
+		{
+			name:       "empty input returns empty",
+			fromServer: []string{},
+			expected:   []string{},
+		},
+		{
+			name:       "nil input returns empty",
+			fromServer: nil,
+			expected:   []string{},
+		},
+		{
+			name:       "all allowlisted capabilities pass through",
+			fromServer: []string{"advanced_search", "tool_call_approval", "tool_call_pattern_approval", "job_trace_pagination"},
+			expected:   []string{"advanced_search", "tool_call_approval", "tool_call_pattern_approval", "job_trace_pagination"},
+		},
+		{
+			name:       "incremental_checkpoints server capability passes through",
+			fromServer: []string{"incremental_checkpoints"},
+			expected:   []string{"incremental_checkpoints"},
+		},
+		{
+			name:       "incremental_checkpoints_only server capability passes through",
+			fromServer: []string{"incremental_checkpoints_only"},
+			expected:   []string{"incremental_checkpoints_only"},
+		},
+		{
+			name:       "idle_status_event server capability passes through",
+			fromServer: []string{"idle_status_event"},
+			expected:   []string{"idle_status_event"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := intersectServerCapabilities(tt.fromServer)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_intersectClientCapabilities(t *testing.T) {
+	tests := []struct {
+		name       string
+		fromClient []string
+		expected   []string
+	}{
+		{
+			name:       "returns empty when no matches",
+			fromClient: []string{"unknown_capability"},
+			expected:   []string{},
+		},
+		{
+			name:       "empty input returns empty",
+			fromClient: []string{},
+			expected:   []string{},
+		},
+		{
+			name:       "nil input returns empty",
+			fromClient: nil,
+			expected:   []string{},
+		},
+		{
+			name:       "web_search capability passes through",
+			fromClient: []string{"web_search"},
+			expected:   []string{"web_search"},
+		},
+		{
+			name:       "web_search combined with other capabilities",
+			fromClient: []string{"shell_command", "web_search"},
+			expected:   []string{"shell_command", "web_search"},
+		},
+		{
+			name:       "unknown web_search variant is filtered out",
+			fromClient: []string{"web_search_unknown"},
+			expected:   []string{},
+		},
+		{
+			name:       "read_file_image capability passes through",
+			fromClient: []string{"read_file_chunked", "read_file_image"},
+			expected:   []string{"read_file_chunked", "read_file_image"},
+		},
+		{
+			name:       "auto_mode capability passes through",
+			fromClient: []string{"shell_command", "auto_mode"},
+			expected:   []string{"shell_command", "auto_mode"},
+		},
+		{
+			name:       "idle_status capability passes through",
+			fromClient: []string{"shell_command", "idle_status"},
+			expected:   []string{"shell_command", "idle_status"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := intersectClientCapabilities(tt.fromClient)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestRunner_Shutdown(t *testing.T) {
+	t.Run("waits for context then sends stop and releases lock on ack", func(t *testing.T) {
+		rdb := initRdb(t)
+		mockWf := &mockWorkflowStream{}
+		mockConn := &mockWebSocketConn{}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		req := httptest.NewRequest("GET", "/duo", nil)
+		req = req.WithContext(ctx)
+
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			lease:   newWorkflowLease(newWorkflowLockManager(rdb)),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+
+		// Pre-acquire the lock so we can verify it gets released
+		err := r.lease.acquire(context.Background(), "shutdown-lock-test-234", "software_development")
+		require.NoError(t, err)
+
+		shutdownDone := make(chan error, 1)
+		shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+		defer shutdownCancel()
+
+		go func() {
+			shutdownDone <- r.Shutdown(shutdownCtx)
+		}()
+
+		// Verify Shutdown blocks while contexts are alive
+		select {
+		case <-shutdownDone:
+			t.Fatal("Shutdown should not return before a context expires")
+		case <-time.After(50 * time.Millisecond):
+			// expected: still waiting
+		}
+
+		// Cancel the shutdown context to unblock
+		shutdownCancel()
+
+		require.Eventually(t, func() bool {
+			return len(mockWf.getSendEvents()) > 0
+		}, 100*time.Millisecond, 10*time.Millisecond)
+
+		// Simulate DWS acknowledging the stop
+		r.stop.acknowledge()
+
+		err = <-shutdownDone
+		require.NoError(t, err)
+
+		sendEvents := mockWf.getSendEvents()
+		require.Len(t, sendEvents, 1)
+		stopEvent := sendEvents[0].GetStopWorkflow()
+		require.NotNil(t, stopEvent)
+		require.Equal(t, "WORKHORSE_SERVER_SHUTDOWN", stopEvent.Reason)
+
+		// Verify the lock was released: acquiring it again should succeed
+		newMutex, lockErr := r.lease.manager.acquireLock(context.Background(), "shutdown-lock-test-234", "software_development")
+		require.NoError(t, lockErr)
+		require.NotNil(t, newMutex)
+		r.lease.manager.releaseLock(context.Background(), newMutex, "shutdown-lock-test-234")
+	})
+
+	t.Run("sends CloseGoingAway to websocket when shutdown context fires", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{}
+		controlMessages := []struct {
+			msgType int
+			data    []byte
+		}{}
+		mockConn := &mockWebSocketConn{}
+		wrappedConn := &shutdownTrackingConn{
+			mockWebSocketConn: mockConn,
+			controlMessages:   &controlMessages,
+		}
+
+		// Use a live request context so the shutdown context fires first (not the request context).
+		req := httptest.NewRequest("GET", "/duo", nil)
+
+		stopAcked := make(chan struct{})
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(wrappedConn),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: stopAcked,
+			},
+		}
+
+		go func() {
+			for len(mockWf.getSendEvents()) == 0 {
+				time.Sleep(5 * time.Millisecond)
+			}
+			r.stop.acknowledge()
+		}()
+
+		// Cancel the shutdown context immediately so it fires first.
+		shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+		shutdownCancel()
+		err := r.Shutdown(shutdownCtx)
+		require.NoError(t, err)
+
+		// Verify a CloseGoingAway frame was sent
+		require.Len(t, controlMessages, 1)
+		require.Equal(t, websocket.CloseMessage, controlMessages[0].msgType)
+		expectedMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, closeReasonWorkhorseShutdown)
+		require.Equal(t, expectedMsg, controlMessages[0].data, "a workhorse drain keeps its own reason text")
+	})
+
+	t.Run("skips CloseGoingAway when request context fires first", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{}
+		controlMessages := []struct {
+			msgType int
+			data    []byte
+		}{}
+		mockConn := &mockWebSocketConn{}
+		wrappedConn := &shutdownTrackingConn{
+			mockWebSocketConn: mockConn,
+			controlMessages:   &controlMessages,
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel immediately so the session context is already done
+		req := httptest.NewRequest("GET", "/duo", nil)
+		req = req.WithContext(ctx)
+
+		stopAcked := make(chan struct{})
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(wrappedConn),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stopWorkflowTimeout: 10 * time.Millisecond,
+			stop: stopCoordinator{
+				acked: stopAcked,
+			},
+		}
+
+		// Use a live shutdown context so only the request context fires.
+		err := r.Shutdown(context.Background())
+		require.NoError(t, err)
+
+		// CloseGoingAway must NOT be sent when the request context fired first.
+		require.Empty(t, controlMessages, "CloseGoingAway should not be sent when request context is done")
+	})
+
+	t.Run("returns nil even when stop times out", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{}
+		mockConn := &mockWebSocketConn{}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel immediately to unblock the select
+		req := httptest.NewRequest("GET", "/duo", nil)
+		req = req.WithContext(ctx)
+
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stopWorkflowTimeout: 10 * time.Millisecond,
+			stop: stopCoordinator{
+				acked: make(chan struct{}), // never closed = timeout
+			},
+		}
+
+		err := r.Shutdown(context.Background())
+		require.NoError(t, err, "Shutdown should always return nil")
+	})
+
+	t.Run("releases lock even when stop fails", func(t *testing.T) {
+		rdb := initRdb(t)
+		mockWf := &mockWorkflowStream{}
+		mockConn := &mockWebSocketConn{}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel immediately to unblock the select
+		req := httptest.NewRequest("GET", "/duo", nil)
+		req = req.WithContext(ctx)
+
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			lease:   newWorkflowLease(newWorkflowLockManager(rdb)),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stopWorkflowTimeout: 10 * time.Millisecond,
+			stop: stopCoordinator{
+				acked: make(chan struct{}), // never closed = timeout
+			},
+		}
+
+		// Pre-acquire the lock
+		err := r.lease.acquire(context.Background(), "shutdown-no-release-test", "software_development")
+		require.NoError(t, err)
+
+		err = r.Shutdown(context.Background())
+		require.NoError(t, err)
+
+		// Lock should have been released even though stop timed out,
+		// so the executor can reconnect to a new workhorse instance.
+		newMutex, lockErr := r.lease.manager.acquireLock(context.Background(), "shutdown-no-release-test", "software_development")
+		require.NoError(t, lockErr, "lock should be released even when stop fails")
+		r.lease.manager.releaseLock(context.Background(), newMutex, "shutdown-no-release-test")
+	})
+}
+
+func TestRunner_stopWorkflow_returnsNilOnAck(t *testing.T) {
+	mockWf := &mockWorkflowStream{}
+	req := httptest.NewRequest("GET", "/duo", nil)
+
+	sess := newSession(req)
+	r := &runner{
+		session: sess,
+		streamManager: &streamManager{
+			wf:      mockWf,
+			session: sess,
+		},
+		stop: stopCoordinator{
+			acked: make(chan struct{}),
+		},
+	}
+
+	// Simulate DWS ack arriving shortly after the stop request is sent
+	go func() {
+		for len(mockWf.getSendEvents()) == 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		r.stop.acknowledge()
+	}()
+
+	err := r.stopWorkflow("TEST_REASON", fmt.Errorf("test close error"))
+	require.NoError(t, err)
+	require.True(t, r.stop.requested.Load(), "stopRequested should be set")
+
+	sendEvents := mockWf.getSendEvents()
+	require.Len(t, sendEvents, 1)
+	stopEvent := sendEvents[0].GetStopWorkflow()
+	require.NotNil(t, stopEvent)
+	require.Equal(t, "TEST_REASON", stopEvent.Reason)
+}
+
+func TestRunner_stopWorkflow_sendsOneStopRequestForConcurrentCallers(t *testing.T) {
+	mockWf := &mockWorkflowStream{}
+	req := httptest.NewRequest("GET", "/duo", nil)
+
+	sess := newSession(req)
+	r := &runner{
+		session: sess,
+		streamManager: &streamManager{
+			wf:      mockWf,
+			session: sess,
+		},
+		stop: stopCoordinator{
+			acked: make(chan struct{}),
+		},
+	}
+
+	// The keepalive, the client reader and Shutdown can all stop the workflow.
+	const callers = 3
+	errs := make(chan error, callers)
+	for range callers {
+		go func() { errs <- r.stopWorkflow("TEST_REASON", errors.New("test close error")) }()
+	}
+
+	require.Eventually(t, func() bool { return len(mockWf.getSendEvents()) > 0 }, time.Second, 5*time.Millisecond)
+	r.stop.acknowledge()
+
+	for range callers {
+		require.NoError(t, <-errs)
+	}
+	require.Len(t, mockWf.getSendEvents(), 1)
+}
+
+func TestRunner_stopWorkflow_reportsSendFailureToEveryCaller(t *testing.T) {
+	mockWf := &mockWorkflowStream{sendError: errors.New("stream closed")}
+	sess := newSession(httptest.NewRequest("GET", "/duo", nil))
+
+	r := &runner{
+		session:       sess,
+		streamManager: &streamManager{wf: mockWf, session: sess},
+		stop:          stopCoordinator{acked: make(chan struct{})},
+		// Long enough that a caller waiting for an acknowledgment would fail the test.
+		stopWorkflowTimeout: time.Minute,
+	}
+
+	for range 2 {
+		err := r.stopWorkflow("TEST_REASON", errors.New("test close error"))
+		require.ErrorContains(t, err, "failed to send stop request: stream closed")
+	}
+}
+
+func TestStopCoordinator_request_metrics(t *testing.T) {
+	send := func() error { return nil }
+
+	t.Run("counts one acknowledged stop for all callers", func(t *testing.T) {
+		acked := counterVecValue(t, stopRequestsTotal, stopOutcomeAcked)
+		s := stopCoordinator{acked: make(chan struct{})}
+		s.acknowledge()
+
+		require.NoError(t, s.request(send, time.Second))
+		require.NoError(t, s.request(send, time.Second))
+
+		require.InDelta(t, acked+1, counterVecValue(t, stopRequestsTotal, stopOutcomeAcked), 0)
+	})
+
+	t.Run("counts a stop that times out", func(t *testing.T) {
+		timeouts := counterVecValue(t, stopRequestsTotal, stopOutcomeTimeout)
+		s := stopCoordinator{acked: make(chan struct{})}
+
+		require.ErrorIs(t, s.request(send, time.Millisecond), errStopTimedOut)
+
+		require.InDelta(t, timeouts+1, counterVecValue(t, stopRequestsTotal, stopOutcomeTimeout), 0)
+	})
+
+	t.Run("counts a stop that could not be sent", func(t *testing.T) {
+		failures := counterVecValue(t, stopRequestsTotal, stopOutcomeSendFailed)
+		s := stopCoordinator{acked: make(chan struct{})}
+		sendErr := errors.New("stream closed")
+
+		require.ErrorIs(t, s.request(func() error { return sendErr }, time.Second), sendErr)
+		require.ErrorIs(t, s.request(send, time.Second), sendErr)
+
+		require.InDelta(t, failures+1, counterVecValue(t, stopRequestsTotal, stopOutcomeSendFailed), 0)
+	})
+}
+
+func TestStopCoordinator_waitForAck_timesOut(t *testing.T) {
+	s := stopCoordinator{acked: make(chan struct{})}
+
+	require.ErrorIs(t, s.waitForAck(10*time.Millisecond), errStopTimedOut)
+}
+
+func TestStopCoordinator_request_joiningCallerWaitsForWhatIsLeft(t *testing.T) {
+	// A stop sent long ago, whose timeout has already run out.
+	newSentStop := func() *stopCoordinator {
+		s := &stopCoordinator{acked: make(chan struct{})}
+		s.sendOnce.Do(func() {})
+		s.requested.Store(true)
+		s.requestedAt.Store(time.Now().Add(-time.Hour).UnixNano())
+		return s
+	}
+
+	request := func(s *stopCoordinator) error {
+		result := make(chan error, 1)
+		go func() { result <- s.request(func() error { return nil }, time.Minute) }()
+
+		select {
+		case err := <-result:
+			return err
+		case <-time.After(5 * time.Second):
+			require.FailNow(t, "a joining caller waited for a fresh timeout")
+			return nil
+		}
+	}
+
+	t.Run("times out at once", func(t *testing.T) {
+		require.ErrorIs(t, request(newSentStop()), errStopTimedOut)
+	})
+
+	t.Run("still reports an acknowledgment that already arrived", func(t *testing.T) {
+		s := newSentStop()
+		s.acknowledge()
+
+		require.NoError(t, request(s))
+	})
+}
+
+func TestRunner_handleAgentMessages_setsWorkflowEndedOnEOF(t *testing.T) {
+	mockWf := &mockWorkflowStream{
+		recvError: io.EOF,
+	}
+	req := httptest.NewRequest("GET", "/duo", nil)
+
+	sess := newSession(req)
+	r := &runner{
+		session: sess,
+		streamManager: &streamManager{
+			wf:      mockWf,
+			session: sess,
+		},
+		stop: stopCoordinator{
+			acked: make(chan struct{}),
+		},
+	}
+
+	errCh := make(chan error, 1)
+	r.handleAgentMessages(context.Background(), errCh)
+
+	require.NoError(t, <-errCh)
+	require.True(t, r.stop.workflowEnded.Load(), "workflowEnded should be set when DWS sends EOF")
+}
+
+func TestRunner_Shutdown_skipsStopAndCloseGoingAwayWhenWorkflowEnded(t *testing.T) {
+	mockWf := &mockWorkflowStream{}
+	controlMessages := []struct {
+		msgType int
+		data    []byte
+	}{}
+	mockConn := &mockWebSocketConn{}
+	wrappedConn := &shutdownTrackingConn{
+		mockWebSocketConn: mockConn,
+		controlMessages:   &controlMessages,
+	}
+
+	req := httptest.NewRequest("GET", "/duo", nil)
+	sess := newSession(req)
+	r := &runner{
+		session: sess,
+		client:  newWsManager(wrappedConn),
+		streamManager: &streamManager{
+			wf:      mockWf,
+			session: sess,
+		},
+		stop: stopCoordinator{
+			acked:        make(chan struct{}),
+			shutdownDone: make(chan struct{}),
+		},
+	}
+	r.stop.workflowEnded.Store(true)
+
+	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+	shutdownCancel() // fire immediately
+
+	err := r.Shutdown(shutdownCtx)
+	require.NoError(t, err)
+
+	require.Empty(t, mockWf.getSendEvents(), "no StopWorkflowRequest should be sent when workflow already ended")
+	require.Empty(t, controlMessages, "CloseGoingAway should not be sent when workflow already ended")
+}
+
+func TestRunner_handleAgentMessages_stopAck(t *testing.T) {
+	t.Run("closes stop.acked when Unavailable received after stop requested", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{
+			recvError: status.Error(codes.Unavailable, "service unavailable"),
+		}
+		req := httptest.NewRequest("GET", "/duo", nil)
+
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+		r.stop.requested.Store(true)
+
+		errCh := make(chan error, 1)
+		r.handleAgentMessages(context.Background(), errCh)
+
+		err := <-errCh
+		require.NoError(t, err, "should return nil when DWS acknowledges stop")
+
+		// Verify stop.acked channel is closed
+		select {
+		case <-r.stop.acked:
+			// expected: channel is closed
+		default:
+			t.Fatal("stop.acked channel should be closed")
+		}
+	})
+
+	t.Run("sends CloseGoingAway when Unavailable received without stop requested", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{
+			recvError: status.Error(codes.Unavailable, "service unavailable"),
+		}
+		controlMessages := []struct {
+			msgType int
+			data    []byte
+		}{}
+		wrappedConn := &shutdownTrackingConn{
+			mockWebSocketConn: &mockWebSocketConn{},
+			controlMessages:   &controlMessages,
+		}
+		req := httptest.NewRequest("GET", "/duo", nil)
+
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(wrappedConn),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+		// stop.requested is false by default: DWS closed the stream on its own.
+
+		errCh := make(chan error, 1)
+		r.handleAgentMessages(context.Background(), errCh)
+
+		err := <-errCh
+		require.NoError(t, err, "an unsolicited Unavailable is a DWS drain, not a failure")
+		require.True(t, r.stop.workflowEnded.Load(), "nothing is left to stop on the DWS side")
+
+		// stop.acked must stay open: no stop request was sent, so there is nothing to acknowledge.
+		select {
+		case <-r.stop.acked:
+			t.Fatal("stop.acked should not be closed when no stop was requested")
+		default:
+		}
+
+		require.Len(t, controlMessages, 1)
+		require.Equal(t, websocket.CloseMessage, controlMessages[0].msgType)
+		expectedMsg := websocket.FormatCloseMessage(websocket.CloseGoingAway, closeReasonDWSUnavailable)
+		require.Equal(t, expectedMsg, controlMessages[0].data, "client must be told to reconnect, naming DWS as the side that went away")
+
+		// The runner's deferred Close must still release the transport, without a second close frame.
+		require.NoError(t, r.client.Close())
+		require.Equal(t, 1, wrappedConn.closeCalls, "underlying connection must be closed after CloseGoingAway")
+		require.Len(t, controlMessages, 1, "no CloseNormalClosure frame after CloseGoingAway")
+	})
+
+	t.Run("returns nil when CloseGoingAway fails after unsolicited Unavailable", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{
+			recvError: status.Error(codes.Unavailable, "service unavailable"),
+		}
+		req := httptest.NewRequest("GET", "/duo", nil)
+
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(&mockWebSocketConn{writeControlError: errors.New("write failed")}),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+
+		errCh := make(chan error, 1)
+		r.handleAgentMessages(context.Background(), errCh)
+
+		require.NoError(t, <-errCh, "a failed close frame is logged, not surfaced as a workflow error")
+		require.True(t, r.stop.workflowEnded.Load())
+	})
+}
+
+func TestRunner_Execute_stopAckFromDWS(t *testing.T) {
+	t.Run("websocket close triggers stop and DWS ack completes cleanly", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{
+			blockCh: make(chan bool, 1),
+		}
+		mockConn := &mockWebSocketConn{
+			readError: &websocket.CloseError{Code: websocket.CloseNormalClosure},
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			client:  newWsManager(mockConn),
+			session: sess,
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+
+		errCh := make(chan error, 1)
+		go func() { errCh <- r.Execute(context.Background()) }()
+
+		// Wait for the stop request to be sent to DWS
+		require.Eventually(t, func() bool {
+			return len(mockWf.getSendEvents()) == 1
+		}, 2*time.Second, 10*time.Millisecond)
+
+		// Simulate DWS acknowledging the stop
+		r.stop.acknowledge()
+		// Unblock the agent messages goroutine
+		mockWf.blockCh <- true
+
+		err := <-errCh
+		// stopWorkflow returns nil via acked, so handleClientEvents sends nil error
+		require.NoError(t, err)
+	})
+}
+
+func TestRunner_Close_waitsForAgentDone(t *testing.T) {
+	newRunnerWithInFlightAgent := func(t *testing.T, stopRequested bool) *runner {
+		t.Helper()
+
+		server := setupTestServer(t)
+
+		mainClient, err := NewClient(&api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}, "test-agent", "")
+		require.NoError(t, err)
+
+		r := &runner{
+			session: newSession(httptest.NewRequest("GET", "/", nil)),
+			client:  newWsManager(&mockWebSocketConn{}),
+			streamManager: &streamManager{
+				wf:      &mockWorkflowStream{},
+				client:  mainClient,
+				session: newSession(httptest.NewRequest(http.MethodGet, "/", nil)),
+			},
+			mcpManager: &mockMcpManager{},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+		r.stop.requested.Store(stopRequested)
+
+		// Simulate an in-flight handleAgentMessages goroutine
+		r.stop.agentDone.Add(1)
+
+		return r
+	}
+
+	t.Run("waits when a stop was requested", func(t *testing.T) {
+		r := newRunnerWithInFlightAgent(t, true)
+
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		// Close should be blocked waiting for agentDone, so that a pending Recv
+		// can observe the stop acknowledgment.
+		select {
+		case <-closeDone:
+			t.Fatal("Close should not return before agentDone is signaled")
+		case <-time.After(100 * time.Millisecond):
+			// expected: Close is still waiting
+		}
+
+		// Signal that handleAgentMessages has finished
+		r.stop.agentDone.Done()
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should return after agentDone is signaled")
+		}
+	})
+
+	t.Run("stops waiting after the stop timeout", func(t *testing.T) {
+		// DWS never ends the stream, so agentDone is never signaled. Close must
+		// give up and close the stream itself rather than block forever.
+		r := newRunnerWithInFlightAgent(t, true)
+		r.stopWorkflowTimeout = 50 * time.Millisecond
+
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should return once the stop timeout has passed")
+		}
+	})
+
+	t.Run("waits only for what is left of the stop timeout", func(t *testing.T) {
+		// stopWorkflow already waited out the timeout for an ack that never came,
+		// so Close must not hold the lock for a second timeout.
+		r := newRunnerWithInFlightAgent(t, true)
+		r.stopWorkflowTimeout = time.Minute
+		r.stop.requestedAt.Store(time.Now().Add(-time.Minute).UnixNano())
+
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should not wait again once the stop timeout has passed")
+		}
+	})
+
+	t.Run("does not wait when no stop was requested", func(t *testing.T) {
+		// There is no acknowledgment coming, so waiting would block until the
+		// gRPC stream failed on its own. A workflow that never started because
+		// the lock was held elsewhere ends up here.
+		r := newRunnerWithInFlightAgent(t, false)
+
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should not wait for agentDone when no stop was requested")
+		}
+	})
+}
+
+func TestRunner_Close_shutdownCoordination(t *testing.T) {
+	newRunnerForClose := func(t *testing.T) *runner {
+		t.Helper()
+		server := setupTestServer(t)
+
+		mainClient, err := NewClient(&api.DuoWorkflowServiceConfig{
+			URI:     server.Addr,
+			Headers: map[string]string{},
+			Secure:  false,
+		}, "test-agent", "")
+		require.NoError(t, err)
+
+		return &runner{
+			session: newSession(httptest.NewRequest("GET", "/", nil)),
+			client:  newWsManager(&mockWebSocketConn{}),
+			streamManager: &streamManager{
+				wf:      &mockWorkflowStream{},
+				client:  mainClient,
+				session: newSession(httptest.NewRequest(http.MethodGet, "/", nil)),
+			},
+			mcpManager: &mockMcpManager{},
+			stop: stopCoordinator{
+				acked:        make(chan struct{}),
+				shutdownDone: make(chan struct{}),
+			},
+		}
+	}
+
+	t.Run("returns without waiting for shutdownDone when no shutdown is in progress", func(t *testing.T) {
+		r := newRunnerForClose(t)
+		// shutdownStarted is false and shutdownDone is never closed, simulating
+		// the normal request path where Shutdown is never invoked. Close must
+		// not block on shutdownDone.
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should not block on shutdownDone when no shutdown is in progress")
+		}
+	})
+
+	t.Run("waits for shutdownDone before closing when a shutdown is in progress", func(t *testing.T) {
+		r := newRunnerForClose(t)
+		// Simulate a shutdown in progress: shutdownStarted is set but
+		// shutdownDone has not been closed yet.
+		r.stop.shutdownStarted.Store(true)
+
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		// Close should block until shutdownDone is closed.
+		select {
+		case <-closeDone:
+			t.Fatal("Close should not return before shutdownDone is closed")
+		case <-time.After(100 * time.Millisecond):
+			// expected: Close is still waiting
+		}
+
+		// Signal that Shutdown has finished.
+		close(r.stop.shutdownDone)
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should return after shutdownDone is closed")
+		}
+	})
+
+	// A session that finishes while the instance drains has nothing left for
+	// Shutdown to tell the client, and Shutdown only wakes on the drain deadline.
+	// Waiting for it held the client's connection open for the whole grace period.
+	t.Run("does not wait for shutdownDone when the workflow already ended", func(t *testing.T) {
+		r := newRunnerForClose(t)
+		r.stop.shutdownStarted.Store(true)
+		r.stop.workflowEnded.Store(true)
+
+		closeDone := make(chan error, 1)
+		go func() {
+			closeDone <- r.Close()
+		}()
+
+		select {
+		case err := <-closeDone:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Close should not wait for shutdownDone once the workflow has ended")
+		}
+	})
+}
+
+func TestRunner_AcquireWorkflowLock_ConcurrentAttempts(t *testing.T) {
+	rdb := initRdb(t)
+	mockConn1 := &mockWebSocketConn{}
+	mockWf1 := &mockWorkflowStream{}
+
+	// We only mock websocket connection 2 as we are calling
+	// handleWorkflowMessage directly for the first runner. The second runner
+	// we want to call Execute on so we need to mock it properly.
+	mockConn2 := &mockWebSocketConn{
+		readMessages: [][]byte{
+			[]byte(`{"startRequest": {"goal": "test", "workflowID": "concurrent-test-123"}}`),
+		},
+	}
+	mockWf2 := &mockWorkflowStream{
+		blockCh: make(chan bool),
+	}
+
+	req1 := httptest.NewRequest("GET", "/", nil)
+	sess1 := newSession(req1)
+	r1 := &runner{
+		session: sess1,
+		client:  newWsManager(mockConn1),
+		httpActionHandler: &runHTTPActionHandler{
+			backend: http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+			session: sess1,
+		},
+		streamManager: &streamManager{
+			wf:      mockWf1,
+			session: sess1,
+		},
+		lease:      newWorkflowLease(newWorkflowLockManager(rdb)),
+		mcpManager: &mockMcpManager{},
+	}
+
+	req2 := httptest.NewRequest("GET", "/", nil)
+	sess2 := newSession(req2)
+	r2 := &runner{
+		session: sess2,
+		client:  newWsManager(mockConn2),
+		httpActionHandler: &runHTTPActionHandler{
+			backend: http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+			session: sess2,
+		},
+		streamManager: &streamManager{
+			wf:      mockWf2,
+			session: sess2,
+		},
+		lease:      newWorkflowLease(newWorkflowLockManager(rdb)),
+		mcpManager: &mockMcpManager{},
+	}
+
+	startReq := &pb.StartWorkflowRequest{
+		Goal:       "test workflow",
+		WorkflowID: "concurrent-test-123",
+		McpTools:   []*pb.McpTool{},
+	}
+
+	// First runner acquires the lock
+	err := r1.lease.acquire(context.Background(), startReq.WorkflowID, "")
+	require.NoError(t, err)
+	mutex, _ := r1.lease.held()
+	assert.NotNil(t, mutex)
+
+	// Second runner should fail to acquire the same lock. This uses the full
+	// Execute() code path to be closer to an integration test.
+	err = r2.Execute(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to acquire lock")
+	mutex, _ = r2.lease.held()
+	assert.Nil(t, mutex)
+
+	// Clean up
+	r1.lease.release(context.Background())
+}
+
+func TestRunner_Execute_RejectsSecondStartRequest(t *testing.T) {
+	mockConn := &mockWebSocketConn{
+		readMessages: [][]byte{
+			[]byte(`{"startRequest": {"goal": "test", "workflowID": "first-123"}}`),
+			[]byte(`{"startRequest": {"goal": "test", "workflowID": "second-456"}}`),
+		},
+	}
+	mockWf := &mockWorkflowStream{blockCh: make(chan bool)}
+
+	sess := newSession(httptest.NewRequest("GET", "/", nil))
+	r := &runner{
+		session:           sess,
+		client:            newWsManager(mockConn),
+		httpActionHandler: &runHTTPActionHandler{session: sess},
+		streamManager:     &streamManager{wf: mockWf, session: sess},
+		mcpManager:        &mockMcpManager{},
+	}
+
+	err := r.Execute(context.Background())
+	require.ErrorIs(t, err, errDuplicateStartRequest)
+
+	require.Len(t, mockWf.getSendEvents(), 1)
+	require.Equal(t, "first-123", sess.WorkflowID())
+}
+
+func TestRunner_HandleWebSocketMessage_AcquiresLock(t *testing.T) {
+	rdb := initRdb(t)
+	mockConn := &mockWebSocketConn{}
+	mockWf := &mockWorkflowStream{}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	sess := newSession(req)
+	r := &runner{
+		session: sess,
+		client:  newWsManager(mockConn),
+		httpActionHandler: &runHTTPActionHandler{
+			backend: http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+			session: sess,
+		},
+		streamManager: &streamManager{
+			wf:      mockWf,
+			session: sess,
+		},
+		lease:      newWorkflowLease(newWorkflowLockManager(rdb)),
+		mcpManager: &mockMcpManager{},
+	}
+
+	event := &pb.ClientEvent{}
+	require.NoError(t, unmarshaler.Unmarshal([]byte(`{"startRequest": {"goal": "test", "workflowID": "msg-test-123"}}`), event))
+	err := r.handleClientEvent(event)
+	require.NoError(t, err)
+
+	// Verify lock was acquired
+	mutex, workflowID := r.lease.held()
+	assert.Equal(t, "msg-test-123", workflowID)
+	assert.NotNil(t, mutex)
+
+	// Clean up
+	r.lease.release(context.Background())
+}
+
+func TestRunner_Close_ReleasesLock(t *testing.T) {
+	rdb := initRdb(t)
+
+	mockConn := &mockWebSocketConn{
+		readMessages: [][]byte{
+			[]byte(`{"startRequest": {"goal": "test", "workflowID": "execute-test-123"}}`),
+		},
+	}
+
+	mockWf := &mockWorkflowStream{
+		blockCh: make(chan bool),
+	}
+
+	reqCtx, cancelReq := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/", nil).WithContext(reqCtx)
+	sess := newSession(req)
+	sm := newTestStreamManager(t, mockWf)
+	sm.session = sess
+	r := &runner{
+		session: sess,
+		client:  newWsManager(mockConn),
+		httpActionHandler: &runHTTPActionHandler{
+			backend: http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+			session: sess,
+		},
+		streamManager: sm,
+		lease:         newWorkflowLease(newWorkflowLockManager(rdb)),
+		mcpManager:    &mockMcpManager{},
+	}
+
+	err := r.Execute(reqCtx)
+
+	// since we block gRPC stream we expect websockets to end with EOF
+	require.Equal(t, "handleClientEvents: failed to read a client event: EOF", err.Error())
+
+	// The stream to DWS is still open until Close, so the lock must be held.
+	_, err = r.lease.manager.acquireLock(context.Background(), "execute-test-123", "software_development")
+	require.Error(t, err)
+
+	// A caller that went away has canceled the request context, which must
+	// not stop the lock from being released.
+	cancelReq()
+	require.NoError(t, r.Close())
+
+	mutex, err := r.lease.manager.acquireLock(context.Background(), "execute-test-123", "software_development")
+	require.NoError(t, err)
+	require.NotNil(t, mutex)
+}
+
+func TestRunner_Close_EndsSession(t *testing.T) {
+	sess := newSession(httptest.NewRequest("GET", "/", nil))
+	sm := newTestStreamManager(t, &mockWorkflowStream{})
+	sm.session = sess
+	r := &runner{
+		session:       sess,
+		client:        newWsManager(&mockWebSocketConn{}),
+		streamManager: sm,
+		mcpManager:    &mockMcpManager{},
+	}
+
+	require.NoError(t, r.Close())
+	require.ErrorIs(t, sess.Context().Err(), context.Canceled)
+}
+
+func TestRunner_Close_ReleasesLockWhenClosingPanics(t *testing.T) {
+	manager := newWorkflowLockManager(initRdb(t))
+	lease := newWorkflowLease(manager)
+	require.NoError(t, lease.acquire(context.Background(), "close-panic-test", "software_development"))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	sm := newTestStreamManager(t, &mockWorkflowStream{})
+	sm.session = newSession(req)
+	r := &runner{
+		session:       sm.session,
+		client:        newWsManager(&mockWebSocketConn{}),
+		streamManager: sm,
+		mcpManager:    &panickingMcpManager{},
+		lease:         lease,
+	}
+
+	require.Panics(t, func() { _ = r.Close() })
+
+	_, err := manager.acquireLock(context.Background(), "close-panic-test", "software_development")
+	require.NoError(t, err, "the lock should be released even though Close panicked")
+}
+
+type panickingMcpManager struct {
+	mockMcpManager
+}
+
+func (*panickingMcpManager) Close() error { panic("close failed") }
+
+func TestRunner_keepaliveClient_ReturnsWithoutInterval(t *testing.T) {
+	r := &runner{client: &noKeepaliveTransport{wsManager: newWsManager(&mockWebSocketConn{})}}
+
+	// Called directly, so a panic from time.NewTicker(0) surfaces here instead
+	// of crashing the test binary from a goroutine. The context never ends, so
+	// returning at all means no ticker was started.
+	require.NotPanics(t, func() {
+		r.keepaliveClient(context.Background(), make(chan error, 1))
+	})
+}
+
+type noKeepaliveTransport struct {
+	*wsManager
+}
+
+func (*noKeepaliveTransport) KeepaliveInterval() time.Duration { return 0 }
+
+type fastKeepaliveTransport struct {
+	*wsManager
+}
+
+func (*fastKeepaliveTransport) KeepaliveInterval() time.Duration { return 10 * time.Millisecond }
+
+func TestRunner_isUsageQuotaExceededError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "resource exhausted with quota exceeded message",
+			err:      status.Error(codes.ResourceExhausted, "USAGE_QUOTA_EXCEEDED: consumer has exceeded their quota"),
+			expected: true,
+		},
+		{
+			name:     "resource exhausted without quota exceeded message",
+			err:      status.Error(codes.ResourceExhausted, "some other resource exhausted error"),
+			expected: false,
+		},
+		{
+			name:     "different error code with quota exceeded message",
+			err:      status.Error(codes.Internal, "USAGE_QUOTA_EXCEEDED: consumer has exceeded their quota"),
+			expected: false,
+		},
+		{
+			name:     "non-gRPC error",
+			err:      errors.New("regular error"),
+			expected: false,
+		},
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "OK status",
+			err:      status.Error(codes.OK, "success"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := &streamManager{session: newSession(httptest.NewRequest("GET", "/", nil))}
+			result := sm.isUsageQuotaExceededError(tt.err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestStreamManager_Close(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name               string
+		ctx                context.Context
+		wantCloseSendCalls int
+	}{
+		{name: "active context", ctx: context.Background(), wantCloseSendCalls: 1},
+		{name: "canceled context", ctx: ctx},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wf := &mockWorkflowStream{}
+			sm := newTestStreamManager(t, wf)
+			sm.session = newSession(httptest.NewRequest(http.MethodGet, "/", nil).WithContext(tt.ctx))
+
+			require.NoError(t, sm.Close())
+			require.Equal(t, tt.wantCloseSendCalls, wf.closeSendCalls)
+		})
+	}
+}
+
+func TestNewStreamManager_ClosesWorkflowStreamWhenCloudServiceFails(t *testing.T) {
+	server := setupTestServer(t)
+	streamEnded := make(chan struct{})
+	server.execWorkflowHandler = func(stream pb.DuoWorkflow_ExecuteWorkflowServer) error {
+		<-stream.Context().Done()
+		close(streamEnded)
+		return nil
+	}
+
+	cfg := testDuoWorkflowConfig(server)
+	// Port 1 always refuses, so the tracking stream cannot be opened.
+	cfg.CloudServiceForSelfHosted = &api.DuoWorkflowServiceConfig{URI: "localhost:1"}
+
+	sm, err := newStreamManager(newSession(httptest.NewRequest(http.MethodGet, "/", nil)), cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to initialize cloud service stream")
+	require.Nil(t, sm)
+
+	select {
+	case <-streamEnded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the workflow stream should be closed when the cloud service stream fails to open")
+	}
+}
+
+func TestStreamManager_Recv_returnsErrStreamUnavailable(t *testing.T) {
+	sm := newTestStreamManager(t, &mockWorkflowStream{
+		recvError: status.Error(codes.Unavailable, "service unavailable"),
+	})
+
+	_, err := sm.Recv()
+	require.Error(t, err)
+	require.ErrorIs(t, err, errStreamUnavailable, "Recv should wrap errStreamUnavailable for Unavailable gRPC errors")
+}
+
+func TestStreamManager_Recv_nonUnavailableError(t *testing.T) {
+	sm := newTestStreamManager(t, &mockWorkflowStream{
+		recvError: status.Error(codes.Internal, "internal server error"),
+	})
+
+	_, err := sm.Recv()
+	require.Error(t, err)
+	require.NotErrorIs(t, err, errStreamUnavailable, "Recv should not return errStreamUnavailable for non-Unavailable gRPC errors")
+}
+
+func TestStreamManager_Recv_returnsErrInvalidRequest(t *testing.T) {
+	sm := newTestStreamManager(t, &mockWorkflowStream{
+		recvError: status.Error(codes.InvalidArgument, "workflow is paused"),
+	})
+
+	_, err := sm.Recv()
+	require.Error(t, err)
+	require.ErrorIs(t, err, errInvalidRequest, "Recv should wrap errInvalidRequest for InvalidArgument gRPC errors")
+	require.Contains(t, err.Error(), "workflow is paused", "Recv should preserve the DWS status message")
+}
+
+func TestRunner_handleAgentMessages_invalidRequest(t *testing.T) {
+	// realistic full-length DWS message for the empty-goal rejection (121 bytes);
+	// this is what actually broke production, where the old code forwarded the
+	// whole wrapped error chain (>125 bytes) and the close frame was dropped.
+	const dwsInvalidGoalMsg = "RESPONSE event must include a non-empty message. " +
+		"The workflow remains paused; please provide real user input to continue."
+
+	t.Run("sends 4400 with the clean DWS message and returns nil on INVALID_ARGUMENT", func(t *testing.T) {
+		controlMessages := []struct {
+			msgType int
+			data    []byte
+		}{}
+		mockConn := &mockWebSocketConn{}
+		wrappedConn := &shutdownTrackingConn{
+			mockWebSocketConn: mockConn,
+			controlMessages:   &controlMessages,
+		}
+		mockWf := &mockWorkflowStream{
+			recvError: status.Error(codes.InvalidArgument, dwsInvalidGoalMsg),
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(wrappedConn),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+
+		errCh := make(chan error, 1)
+		r.handleAgentMessages(context.Background(), errCh)
+
+		err := <-errCh
+		require.NoError(t, err, "handleAgentMessages should return nil for INVALID_ARGUMENT")
+
+		// A close frame with code 4400 (private-use Bad Request) must actually be
+		// sent, carrying the clean DWS status message (not the wrapped chain).
+		require.Len(t, controlMessages, 1)
+		require.Equal(t, websocket.CloseMessage, controlMessages[0].msgType)
+		// FormatCloseMessage encodes as 2-byte big-endian code + UTF-8 reason.
+		require.LessOrEqual(t, len(controlMessages[0].data), 125, "close frame must fit the 125-byte control-frame limit")
+		closeCode := int(controlMessages[0].data[0])<<8 | int(controlMessages[0].data[1])
+		require.Equal(t, closeInvalidRequest, closeCode, "close code should be 4400 (private-use Bad Request)")
+		closeReason := string(controlMessages[0].data[2:])
+		require.Equal(t, dwsInvalidGoalMsg, closeReason, "close reason should be the clean DWS status message")
+		require.NotContains(t, closeReason, "failed to read a gRPC message", "close reason must not include the wrapped error chain")
+
+		// Verify the connection is marked closed
+		require.True(t, wsClientOf(t, r).closed.Load(), "websocket should be marked closed after SendInvalidRequest")
+	})
+
+	t.Run("truncates an over-long DWS message so the 4400 frame is still sent", func(t *testing.T) {
+		controlMessages := []struct {
+			msgType int
+			data    []byte
+		}{}
+		wrappedConn := &shutdownTrackingConn{
+			mockWebSocketConn: &mockWebSocketConn{},
+			controlMessages:   &controlMessages,
+		}
+		mockWf := &mockWorkflowStream{
+			recvError: status.Error(codes.InvalidArgument, strings.Repeat("x", 300)),
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(wrappedConn),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{acked: make(chan struct{})},
+		}
+
+		errCh := make(chan error, 1)
+		r.handleAgentMessages(context.Background(), errCh)
+		require.NoError(t, <-errCh)
+
+		// Even a 300-byte message must not drop the close frame: it is truncated
+		// to fit, so the client still receives 4400 rather than falling back to 1000.
+		require.Len(t, controlMessages, 1)
+		require.LessOrEqual(t, len(controlMessages[0].data), 125, "close frame must fit the 125-byte control-frame limit")
+		closeCode := int(controlMessages[0].data[0])<<8 | int(controlMessages[0].data[1])
+		require.Equal(t, closeInvalidRequest, closeCode, "close code should be 4400")
+		require.True(t, wsClientOf(t, r).closed.Load(), "websocket should be marked closed after SendInvalidRequest")
+	})
+
+	t.Run("returns nil even when SendInvalidRequest write fails", func(t *testing.T) {
+		mockWf := &mockWorkflowStream{
+			recvError: status.Error(codes.InvalidArgument, "workflow is paused"),
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(&mockWebSocketConn{writeControlError: errors.New("write failed")}),
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: make(chan struct{}),
+			},
+		}
+
+		errCh := make(chan error, 1)
+		r.handleAgentMessages(context.Background(), errCh)
+
+		err := <-errCh
+		require.NoError(t, err, "handleAgentMessages should return nil even when the WS write fails")
+	})
+}
+
+func TestActionDispatcher_dispatch_TrackLlmCallForSelfHosted(t *testing.T) {
+	t.Run("successful tracking of LLM call", func(t *testing.T) {
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+		mockCloudStream := &mockSelfHostedWorkflowStream{
+			recvActions: []*pb.TrackSelfHostedAction{
+				{
+					RequestID: "req-123",
+				},
+			},
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				cloudServiceStream: mockCloudStream,
+				session:            sess,
+			},
+		}
+
+		action := &pb.Action{
+			RequestID: "req-123",
+			Action: &pb.Action_TrackLlmCallForSelfHosted{
+				TrackLlmCallForSelfHosted: &pb.TrackLlmCallForSelfHosted{
+					WorkflowID:           "wf-456",
+					FeatureQualifiedName: "duo_workflow",
+					FeatureAiCatalogItem: true,
+					SourceType:           "merge_request_code_conflict",
+				},
+			},
+		}
+
+		ctx := context.Background()
+		err := r.actionDispatcher().dispatch(ctx, action)
+
+		require.NoError(t, err)
+
+		// Verify cloud service stream received the correct event
+		sentEvents := mockCloudStream.getSendEvents()
+		require.Len(t, sentEvents, 1)
+		require.Equal(t, "req-123", sentEvents[0].RequestID)
+		require.Equal(t, "wf-456", sentEvents[0].WorkflowID)
+		require.Equal(t, "duo_workflow", sentEvents[0].FeatureQualifiedName)
+		require.True(t, sentEvents[0].FeatureAiCatalogItem)
+		require.Equal(t, "merge_request_code_conflict", sentEvents[0].SourceType)
+
+		// Verify workflow stream received the acknowledgment
+		wfEvents := mockWf.getSendEvents()
+		require.Len(t, wfEvents, 1)
+		actionResponse := wfEvents[0].GetActionResponse()
+		require.NotNil(t, actionResponse)
+		require.Equal(t, "req-123", actionResponse.RequestID)
+		plainTextResp := actionResponse.GetPlainTextResponse()
+		require.NotNil(t, plainTextResp)
+		require.Empty(t, plainTextResp.Response)
+	})
+
+	t.Run("error when cloud service stream not initialized", func(t *testing.T) {
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				cloudServiceStream: nil,
+				session:            sess,
+			},
+		}
+
+		action := &pb.Action{
+			RequestID: "req-456",
+			Action: &pb.Action_TrackLlmCallForSelfHosted{
+				TrackLlmCallForSelfHosted: &pb.TrackLlmCallForSelfHosted{
+					WorkflowID:           "wf-789",
+					FeatureQualifiedName: "duo_workflow",
+					FeatureAiCatalogItem: false,
+				},
+			},
+		}
+
+		ctx := context.Background()
+		err := r.actionDispatcher().dispatch(ctx, action)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cloud service stream not initialized")
+	})
+
+	t.Run("error when sending to cloud service fails", func(t *testing.T) {
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+		mockCloudStream := &mockSelfHostedWorkflowStream{
+			sendError: errors.New("send failed"),
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				cloudServiceStream: mockCloudStream,
+				session:            sess,
+			},
+		}
+
+		action := &pb.Action{
+			RequestID: "req-789",
+			Action: &pb.Action_TrackLlmCallForSelfHosted{
+				TrackLlmCallForSelfHosted: &pb.TrackLlmCallForSelfHosted{
+					WorkflowID:           "wf-101",
+					FeatureQualifiedName: "duo_workflow",
+					FeatureAiCatalogItem: true,
+				},
+			},
+		}
+
+		ctx := context.Background()
+		err := r.actionDispatcher().dispatch(ctx, action)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to send to cloud service")
+	})
+
+	t.Run("error when receiving from cloud service fails", func(t *testing.T) {
+		mockConn := &mockWebSocketConn{}
+		mockWf := &mockWorkflowStream{}
+		mockCloudStream := &mockSelfHostedWorkflowStream{
+			recvError: errors.New("recv failed"),
+		}
+
+		req := httptest.NewRequest("GET", "/duo", nil)
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  newWsManager(mockConn),
+			streamManager: &streamManager{
+				wf:                 mockWf,
+				cloudServiceStream: mockCloudStream,
+				session:            sess,
+			},
+		}
+
+		action := &pb.Action{
+			RequestID: "req-012",
+			Action: &pb.Action_TrackLlmCallForSelfHosted{
+				TrackLlmCallForSelfHosted: &pb.TrackLlmCallForSelfHosted{
+					WorkflowID:           "wf-112",
+					FeatureQualifiedName: "duo_workflow",
+					FeatureAiCatalogItem: false,
+				},
+			},
+		}
+
+		ctx := context.Background()
+		err := r.actionDispatcher().dispatch(ctx, action)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to receive from cloud service")
+	})
+}
+
+func TestRunner_keepaliveClient(t *testing.T) {
+	t.Run("sends keepalive at the configured interval", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		pingSent := make(chan struct{})
+		wrappedConn := &pingTrackingConn{
+			mockWebSocketConn: &mockWebSocketConn{},
+			onPing: func() {
+				select {
+				case pingSent <- struct{}{}:
+				default:
+				}
+				cancel() // stop the goroutine after the first ping
+			},
+		}
+
+		r := &runner{
+			session: newSession(httptest.NewRequest("GET", "/duo", nil)),
+			client:  &fastKeepaliveTransport{wsManager: newWsManager(wrappedConn)},
+		}
+
+		errCh := make(chan error, 1)
+		go r.keepaliveClient(ctx, errCh)
+
+		select {
+		case <-pingSent:
+		case err := <-errCh:
+			t.Fatalf("unexpected error from keepaliveClient: %v", err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for keepalive to be sent")
+		}
+	})
+
+	t.Run("stops workflow and marks websocket closed when WriteControl fails", func(t *testing.T) {
+		writeErr := fmt.Errorf("network gone")
+		wrappedConn := &pingTrackingConn{
+			mockWebSocketConn: &mockWebSocketConn{
+				writeControlError: writeErr,
+			},
+		}
+		mockWf := &mockWorkflowStream{}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, "GET", "/duo", nil)
+		stopAcked := make(chan struct{})
+		sess := newSession(req)
+		r := &runner{
+			session: sess,
+			client:  &fastKeepaliveTransport{wsManager: newWsManager(wrappedConn)},
+			streamManager: &streamManager{
+				wf:      mockWf,
+				session: sess,
+			},
+			stop: stopCoordinator{
+				acked: stopAcked,
+			},
+		}
+
+		errCh := make(chan error, 1)
+		go r.keepaliveClient(ctx, errCh)
+
+		// Wait for the StopWorkflow event to be sent, then close stopAcked
+		// so stopWorkflow unblocks and keepaliveClient can send to errCh.
+		require.Eventually(t, func() bool {
+			return len(mockWf.getSendEvents()) == 1
+		}, 2*time.Second, 10*time.Millisecond)
+
+		stopEvent := mockWf.getSendEvents()[0].GetStopWorkflow()
+		require.NotNil(t, stopEvent)
+		assert.Equal(t, "WORKHORSE_WEBSOCKET_PING_FAILED", stopEvent.Reason)
+		assert.True(t, r.client.(*fastKeepaliveTransport).closed.Load())
+
+		r.stop.acknowledge()
+
+		select {
+		case err := <-errCh:
+			// stopWorkflow returned nil (via acked), so keepaliveClient forwards nil
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for keepaliveClient to return")
+		}
+	})
+}
+
+// shutdownTrackingConn wraps mockWebSocketConn and records WriteControl calls
+// so tests can verify the close frame sent during Shutdown.
+type shutdownTrackingConn struct {
+	*mockWebSocketConn
+	controlMessages *[]struct {
+		msgType int
+		data    []byte
+	}
+}
+
+func (s *shutdownTrackingConn) WriteControl(msgType int, data []byte, deadline time.Time) error {
+	*s.controlMessages = append(*s.controlMessages, struct {
+		msgType int
+		data    []byte
+	}{msgType: msgType, data: data})
+	return s.mockWebSocketConn.WriteControl(msgType, data, deadline)
+}
+
+func (s *shutdownTrackingConn) SetPongHandler(h func(string) error) {
+	s.mockWebSocketConn.SetPongHandler(h)
+}
+
+// pingTrackingConn wraps mockWebSocketConn and calls onPing when WriteControl
+// is called with a PingMessage, allowing tests to observe ping sends.
+type pingTrackingConn struct {
+	*mockWebSocketConn
+	onPing func()
+}
+
+func (p *pingTrackingConn) WriteControl(msgType int, data []byte, deadline time.Time) error {
+	if msgType == websocket.PingMessage && p.onPing != nil {
+		p.onPing()
+	}
+	return p.mockWebSocketConn.WriteControl(msgType, data, deadline)
+}
+
+func (p *pingTrackingConn) SetPongHandler(h func(string) error) {
+	p.mockWebSocketConn.SetPongHandler(h)
+}
+
+func TestMarkClientInjected(t *testing.T) {
+	tools := []*pb.McpTool{
+		{Name: "claims_false", ClientInjected: proto.Bool(false)},
+		{Name: "claims_true", ClientInjected: proto.Bool(true)},
+		{Name: "unset"},
+	}
+
+	markClientInjected(tools)
+
+	for _, tool := range tools {
+		assert.True(t, tool.GetClientInjected(), tool.Name)
+	}
+}

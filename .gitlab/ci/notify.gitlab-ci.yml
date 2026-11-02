@@ -1,0 +1,17 @@
+notify-test-on-omnibus-failure:
+  extends:
+    - .repo-from-artifacts
+    - .notify:rules:notify-test-on-omnibus-failure
+  stage: notify
+  cache: {}
+  image: ${GITLAB_DEPENDENCY_PROXY_ADDRESS}ruby:${RUBY_VERSION}
+  needs:
+    - !reference [.repo-from-artifacts, needs]
+    - job: e2e:test-on-omnibus-ee
+      optional: true
+      artifacts: false
+  before_script:
+    - source scripts/utils.sh
+    - install_gitlab_gem
+  script:
+    - scripts/generate-failed-test-on-omnibus-mr-message.rb

@@ -1,0 +1,61 @@
+# @feature_category: ai_agents
+query getProjectAgentArtifactsAiGovernanceSessions(
+  $after: String
+  $before: String
+  $first: Int
+  $last: Int
+  $name: String
+  $not: AiGovernanceSessionNegatedFilterInput
+  $startTimeAfter: Time
+  $startTimeBefore: Time
+  $triggeredByUserId: UserID
+  $agentClass: AiGovernanceAgentClass
+  $projectFullPath: ID!
+) {
+  project(fullPath: $projectFullPath) {
+    id
+    aiGovernanceSessions(
+      after: $after
+      before: $before
+      first: $first
+      last: $last
+      sessionStartedAfter: $startTimeAfter
+      sessionStartedBefore: $startTimeBefore
+      flowType: $name
+      triggeredByUserId: $triggeredByUserId
+      agentClass: $agentClass
+      not: $not
+    ) {
+      nodes {
+        id
+        sessionId
+        source
+        flowType
+        agentType
+        webPath
+        downloadPath
+        sessionStartedAt
+        auditEventsCount
+        project {
+          id
+          name
+          webPath
+          fullPath
+        }
+        triggeredBy {
+          id
+          name
+          username
+          avatarUrl
+          webPath
+        }
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+    }
+  }
+}

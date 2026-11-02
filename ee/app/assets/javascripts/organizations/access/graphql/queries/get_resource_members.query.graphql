@@ -1,0 +1,24 @@
+# @feature_category: organization
+query getOrganizationAccessResourceMembers($resourceId: String!, $first: Int!) {
+  artifactRegistryRoleAssignmentCounts(resourceId: $resourceId) @client {
+    total
+    byRole {
+      role
+      count
+    }
+  }
+  artifactRegistryRoleAssignments(resourceIds: [$resourceId], first: $first) @client {
+    nodes {
+      resourceId
+      role
+      createdAt
+      assignee {
+        id
+        name
+        username
+        webPath
+        avatarUrl
+      }
+    }
+  }
+}

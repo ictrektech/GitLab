@@ -1,0 +1,114 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe 'querying duoMcpServerNames', feature_category: :duo_agent_platform do
+  include GraphqlHelpers
+
+  let_it_be(:group, freeze: false) { create(:group) }
+  let_it_be(:project) { create(:project, :with_duo_features_enabled, group: group) }
+  let_it_be(:organization) { project.organization }
+  let_it_be(:current_user) { create(:user, maintainer_of: project, organizations: [organization]) }
+
+  def query_project(fields, user: current_user)
+    result = GitlabSchema.execute(%(
+      query {
+        project(fullPath: "#{project.full_path}") {
+          #{fields}
+        }
+      }
+    ), context: { current_user: user }).as_json
+
+    result.dig('data', 'project')
+  end
+
+  def query_field(user: current_user)
+    query_project('duoMcpServerNames', user: user)&.fetch('duoMcpServerNames')
+  end
+
+  before_all do
+    group.ai_settings.update!(duo_workflow_mcp_enabled: true)
+  end
+
+  before do
+    # Stub the entitlement seams so the real :read_ai_catalog_mcp_server policy grant is exercised.
+    allow(::Gitlab::Llm::StageCheck).to receive(:available?).and_return(true)
+    allow(::Ai::Catalog).to receive(:mcp_servers_available?).and_return(true)
+  end
+
+  it 'is empty when no configured agent uses an MCP server' do
+    expect(query_field).to eq([])
+  end
+
+  context 'when configured agents use MCP servers' do
+    let_it_be(:server) { create(:ai_catalog_mcp_server, organization: organization, name: 'Linear') }
+    let_it_be(:shared_server) { create(:ai_catalog_mcp_server, organization: organization, name: 'Atlassian') }
+
+    before_all do
+      [[server.id, shared_server.id], [shared_server.id]].each do |server_ids|
+        agent = create(:ai_catalog_agent, organization: organization)
+        create(:ai_catalog_agent_version, item: agent, definition: {
+          'system_prompt' => 'Test prompt',
+          'tools' => [],
+          'user_prompt' => '',
+          'mcp_servers' => server_ids
+        })
+        create(:ai_catalog_item_consumer, project: project, item: agent)
+      end
+
+      group.namespace_settings.update!(duo_custom_agents_enabled: true)
+    end
+
+    it 'lists each server of the configured agents once, sorted by name' do
+      expect(query_field).to eq(%w[Atlassian Linear])
+    end
+
+    it 'runs the lookup once when the count is requested alongside' do
+      expect(::Ai::DuoWorkflow::ProjectReadiness).to receive(:new).once.and_call_original
+
+      expect(query_project('duoMcpServerNames duoMcpServersCount')).to eq(
+        'duoMcpServerNames' => %w[Atlassian Linear],
+        'duoMcpServersCount' => 2
+      )
+    end
+  end
+
+  # Which MCP servers a project's agents use is not public information. The
+  # reader is a maintainer, so the project itself resolves and the nil can only
+  # come from the field-level authorization.
+  context 'when the root namespace has MCP disabled' do
+    before do
+      group.ai_settings.update!(duo_workflow_mcp_enabled: false)
+    end
+
+    after do
+      group.ai_settings.update!(duo_workflow_mcp_enabled: true)
+    end
+
+    it 'redacts the field for a member who can read the project' do
+      result = query_project('id duoMcpServerNames')
+
+      expect(result['id']).to be_present
+      expect(result['duoMcpServerNames']).to be_nil
+    end
+  end
+
+  it 'is not resolved unless it is requested' do
+    expect(::Ai::DuoWorkflow::ProjectReadiness).not_to receive(:new)
+
+    GitlabSchema.execute(%(
+      query { project(fullPath: "#{project.full_path}") { id } }
+    ), context: { current_user: current_user })
+  end
+
+  it 'can be requested for at most 10 projects in one query', :aggregate_failures do
+    query_for = ->(count) do
+      aliases = Array.new(count) { |i| %(p#{i}: project(fullPath: "#{project.full_path}") { duoMcpServerNames }) }
+      GitlabSchema.execute("query { #{aliases.join("\n")} }", context: { current_user: current_user }).as_json
+    end
+
+    expect(query_for.call(10)['errors']).to be_nil
+    expect(query_for.call(11)['errors'].pluck('message'))
+      .to include('"duoMcpServerNames" field can be requested only for 10 Project(s) at a time.')
+  end
+end

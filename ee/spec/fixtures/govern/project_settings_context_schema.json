@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "glaz:govern:context:project_settings:1-0-1",
+  "title": "project settings evaluation context",
+  "description": "Context document supplied to governance policies by the settings enforcement triggers (project.before_settings_update, project.scheduled_settings_drift_check, project.after_create, project.after_transfer). The family shares one shape by design: the document is a state snapshot of one project's settings, so the same rule evaluates at the save, creation, transfer, and drift check moments. At the save moment the snapshot carries the proposed values, i.e. the state as it would be after the write.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evaluated_at",
+    "trigger",
+    "organization",
+    "groups",
+    "compliance_frameworks",
+    "project"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "$ref": "#/$defs/schema_version" },
+    "evaluated_at":   { "$ref": "#/$defs/evaluated_at" },
+    "trigger": {
+      "enum": ["project.before_settings_update", "project.scheduled_settings_drift_check", "project.after_create", "project.after_transfer"],
+      "description": "The settings enforcement trigger that produced this context document. The triggers of the family share one document shape."
+    },
+    "actor":          { "$ref": "#/$defs/actor" },
+    "organization":   { "$ref": "#/$defs/organization" },
+    "groups":                { "$ref": "#/$defs/groups" },
+    "compliance_frameworks": { "$ref": "#/$defs/compliance_frameworks" },
+    "project":        { "$ref": "#/$defs/project" }
+  },
+  "$defs": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+-[0-9]+-[0-9]+$",
+      "description": "Schema version for forward-compatibility detection, follows SchemaVer MODEL-REVISION-ADDITION format."
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 / RFC 3339 timestamp at which the evaluation context was assembled."
+    },
+    "actor": {
+      "type": "string",
+      "pattern": "^(users|service_accounts)/[0-9]+$",
+      "description": "User or service account on whose behalf the evaluation runs, e.g. `users/1234`. Absent on scheduled evaluations with no acting user."
+    },
+    "organization": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^organizations/[0-9]+$",
+          "description": "Organization resource path, e.g. `organizations/9`."
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "IDs of the project's group and its ancestors, ascending. Empty for personal projects. Scope rules gate group-targeted policies on membership in this set."
+    },
+    "compliance_frameworks": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "description": "IDs of compliance frameworks applied to the project, ascending. Used by scope rules to gate policies on specific frameworks."
+    },
+    "project": {
+      "type": "object",
+      "required": ["id", "full_path", "personal", "archived", "namespace_id", "settings"],
+      "additionalProperties": true,
+      "properties": {
+        "id":           { "type": "integer", "minimum": 1, "description": "Project ID. Scope rules match it against included/excluded project sets." },
+        "full_path":    { "type": "string", "minLength": 1, "description": "Full namespace path of the project, e.g. `group/subgroup/project`." },
+        "personal":     { "type": "boolean", "description": "Whether the project lives in a personal namespace." },
+        "archived":     { "type": "boolean", "description": "Whether the project is archived." },
+        "namespace_id": { "type": "integer", "minimum": 1, "description": "ID of the direct parent namespace." },
+        "settings":     { "$ref": "#/$defs/settings" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "Flat map of the project's settings, keyed by the Policy Store settings catalog key. Values are the project's OWN stored values, never cascade-resolved effective values: compliance is checked against the stored column, so a project that behaves compliantly only through a strict ancestor still reads as non-compliant here. The approval family uses allow-term keys, inverted from the disable-term columns. A key is omitted when the tier does not license it, when its backing storage row is absent, or when a nullable enum column stores no choice; it is never defaulted. The map is open: a host that supplies a key this schema does not list yet still validates, so a catalog addition is not a breaking change.",
+      "additionalProperties": true,
+      "properties": {
+        "visibility": {
+          "enum": ["private", "internal", "public"],
+          "description": "Project visibility (`projects.visibility_level`, stringified)."
+        },
+        "request_access_enabled": {
+          "type": "boolean",
+          "description": "Whether users can request access to the project (`projects.request_access_enabled`)."
+        },
+        "only_allow_merge_if_pipeline_succeeds": {
+          "type": "boolean",
+          "description": "Merge check: pipelines must succeed (`projects.only_allow_merge_if_pipeline_succeeds`)."
+        },
+        "only_allow_merge_if_all_discussions_are_resolved": {
+          "type": "boolean",
+          "description": "Merge check: all threads resolved (`projects.only_allow_merge_if_all_discussions_are_resolved`)."
+        },
+        "remove_source_branch_after_merge": {
+          "type": ["boolean", "null"],
+          "description": "Default enablement of delete-source-branch on merge requests (`projects.remove_source_branch_after_merge`, nullable column)."
+        },
+        "allow_author_approval": {
+          "type": "boolean",
+          "description": "Merge request authors can approve their own MRs. Own stored value, allow-term inversion of `projects.merge_requests_author_approval`."
+        },
+        "allow_committer_approval": {
+          "type": "boolean",
+          "description": "Committers to the source branch can approve the MR. Own stored value, allow-term inversion of `projects.merge_requests_disable_committers_approval`."
+        },
+        "allow_overrides_to_approver_list_per_merge_request": {
+          "type": "boolean",
+          "description": "Approval rules may be edited per merge request. Own stored value, allow-term inversion of `projects.disable_overriding_approvers_per_merge_request`."
+        },
+        "retain_approvals_on_push": {
+          "type": "boolean",
+          "description": "Approvals survive new commits to the source branch. Own stored value, allow-term inversion of `projects.reset_approvals_on_push`."
+        },
+        "squash_option": {
+          "enum": ["never", "always", "default_on", "default_off"],
+          "description": "Squash-commits-on-merge policy (`project_settings.squash_option`)."
+        },
+        "keep_latest_artifact": {
+          "type": "boolean",
+          "description": "Keep artifacts of the most recent successful pipeline (`project_ci_cd_settings.keep_latest_artifact`)."
+        },
+        "allow_fork_pipelines_to_run_in_parent_project": {
+          "type": "boolean",
+          "description": "Fork MR pipelines may run in the parent project (`project_ci_cd_settings.allow_fork_pipelines_to_run_in_parent_project`)."
+        },
+        "pipeline_variables_minimum_override_role": {
+          "enum": ["no_one_allowed", "developer", "maintainer", "owner"],
+          "description": "Minimum role allowed to override pipeline variables (`project_ci_cd_settings.pipeline_variables_minimum_override_role`)."
+        },
+        "merge_requests_access_level": {
+          "enum": ["disabled", "private", "enabled", "public"],
+          "description": "Merge requests feature availability (`project_features.merge_requests_access_level`, stringified). The catalog authors only `disabled`/`private`/`enabled`; `public` can still appear as a stored value."
+        },
+        "builds_access_level": {
+          "enum": ["disabled", "private", "enabled", "public"],
+          "description": "CI/CD (builds) feature availability (`project_features.builds_access_level`, stringified). The catalog authors only `disabled`/`private`/`enabled`; `public` can still appear as a stored value."
+        },
+        "forking_access_level": {
+          "enum": ["disabled", "private", "enabled", "public"],
+          "description": "Forking feature availability (`project_features.forking_access_level`, stringified). The catalog authors only `disabled`/`private`/`enabled`; `public` can still appear as a stored value."
+        },
+        "secret_push_protection_enabled": {
+          "type": "boolean",
+          "description": "Secret push protection (`project_security_settings.secret_push_protection_enabled`). Ultimate-tier setting; omitted when the tier does not license it."
+        }
+      }
+    }
+  }
+}

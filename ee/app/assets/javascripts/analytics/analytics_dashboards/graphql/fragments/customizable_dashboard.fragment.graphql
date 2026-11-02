@@ -1,0 +1,41 @@
+fragment CustomizableDashboardFragment on CustomizableDashboardConnection {
+  nodes {
+    slug
+    title
+    description
+    userDefined
+    status
+    gridHeight
+    errors
+    filters
+    panels {
+      nodes {
+        title
+        titleIcon
+        tooltip {
+          description
+          descriptionLink
+        }
+        gridAttributes
+        queryOverrides
+        visualization {
+          slug
+          type
+          options
+          data
+          errors
+        }
+        views {
+          text
+          visualization {
+            slug
+            type
+            options
+            data
+            errors
+          }
+        }
+      }
+    }
+  }
+}

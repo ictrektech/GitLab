@@ -1,0 +1,15 @@
+# @feature_category: team_planning
+
+# Project settings the Generate Workplan flow needs. They are the same for every work item
+# in the project, so they are read from the project rather than from each work item.
+query workplanFlowAvailability($fullPath: ID!) {
+  project(fullPath: $fullPath) {
+    id
+    duoFeaturesEnabled
+    duoWorkflowStatusCheck {
+      remoteFlowsEnabled
+      foundationalFlowsEnabled
+      enabledFoundationalFlows
+    }
+  }
+}

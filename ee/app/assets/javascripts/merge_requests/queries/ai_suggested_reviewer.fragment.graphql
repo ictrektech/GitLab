@@ -1,0 +1,19 @@
+#import "~/graphql_shared/fragments/user.fragment.graphql"
+#import "~/graphql_shared/fragments/user_availability.fragment.graphql"
+
+fragment AiSuggestedReviewer on AiSuggestedReviewer {
+  id
+  user {
+    ...User
+    ...UserAvailability
+  }
+  approvalRule {
+    id
+    name
+    type
+    section
+    patterns
+  }
+  reason
+  createdAt
+}

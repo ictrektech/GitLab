@@ -1,0 +1,10 @@
+---
+name: dap_session_details_polling
+description: Pauses session details polling in hidden tabs and refetches messages only when the session changes.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635073
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/264028
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635251
+milestone: '19.6'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

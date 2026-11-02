@@ -1,0 +1,9 @@
+---
+name: cache_total_count_on_group_merge_requests_api
+description: Caches the X-Total count on GET /groups/:id/merge_requests across the pages of the same query for 15 minutes
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/257173
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/630469
+milestone: '19.6'
+group: group::code review
+type: gitlab_com_derisk
+default_enabled: false

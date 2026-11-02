@@ -1,0 +1,46 @@
+#import "~/graphql_shared/fragments/user.fragment.graphql"
+
+fragment MrAiOverviewDiscussion on Discussion {
+  id
+  replyId
+  resolvable
+  resolved
+  userPermissions {
+    resolveNote
+  }
+  truncatedDiffLines {
+    type
+    text
+  }
+  notes {
+    nodes {
+      id
+      bodyFirstLineHtml
+      createdAt
+      suggestions {
+        nodes {
+          id
+          fromContent
+          toContent
+          applied
+        }
+      }
+      author {
+        ...User
+        bot
+      }
+      position {
+        filePath
+        oldPath
+        newPath
+        oldLine
+        newLine
+        diffRefs {
+          baseSha
+          startSha
+          headSha
+        }
+      }
+    }
+  }
+}

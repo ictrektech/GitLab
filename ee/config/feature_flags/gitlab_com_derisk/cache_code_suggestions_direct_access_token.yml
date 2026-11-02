@@ -1,0 +1,10 @@
+---
+name: cache_code_suggestions_direct_access_token
+description: Return the cached code suggestions direct access token to a user who asks again before it expires, instead of minting a new one on every call
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635137
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/264264
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635474
+milestone: '19.6'
+group: group::dap repository flows
+type: gitlab_com_derisk
+default_enabled: false

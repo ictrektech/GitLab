@@ -1,0 +1,10 @@
+---
+name: limit_duo_workflow_events_page_cost
+description: Caps duoWorkflowEvents at 5 checkpoints per page, and builds checkpoint and compressedCheckpoint on every DuoWorkflowEvent (including firstCheckpoint, latestCheckpoint and workflowEventsUpdated) from one blob load per workflow with a shared decode cache, instead of once per row
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635071
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265132
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636470
+milestone: '19.6'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,9 @@
+mutation updateCiJobTokenPermissions($input: ProjectCiCdSettingsUpdateInput!) {
+  projectCiCdSettingsUpdate(input: $input) {
+    ciCdSettings {
+      pushRepositoryForJobTokenAllowed
+      crossProjectPushForJobTokenAllowed
+    }
+    errors
+  }
+}

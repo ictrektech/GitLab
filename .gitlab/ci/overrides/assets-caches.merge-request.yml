@@ -1,0 +1,3 @@
+# MR pipelines use unprotected assets caches, so protected pipelines never restore assets built by an MR
+.assets-cache:
+  unprotect: true

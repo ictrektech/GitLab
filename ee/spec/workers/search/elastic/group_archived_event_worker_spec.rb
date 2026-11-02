@@ -1,0 +1,121 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe Search::Elastic::GroupArchivedEventWorker, feature_category: :global_search do
+  let(:event) { ::Namespaces::Groups::GroupArchivedEvent.new(data: data) }
+
+  before do
+    stub_ee_application_setting(elasticsearch_indexing: true)
+  end
+
+  it_behaves_like 'subscribes to event' do
+    let(:data) do
+      { group_id: 1, root_namespace_id: 1 }
+    end
+  end
+
+  it 'has until_executed deduplication strategy and if_deduplicated: :reschedule_once as options' do
+    expect(described_class.get_deduplicate_strategy).to eq(:until_executed)
+    expect(described_class.get_deduplication_options).to include({ if_deduplicated: :reschedule_once })
+  end
+
+  it_behaves_like 'an idempotent worker' do
+    let_it_be(:group) { create(:group, :with_hierarchy) }
+    let_it_be(:project) { create(:project, group: group) }
+    let_it_be(:project2) { create(:project, group: group.children[0]) }
+    let_it_be(:project3) { create(:project, group: group.children[0].children[1]) }
+    let_it_be(:project4) { create(:project, group: group.children[1].children[2]) }
+    let_it_be(:group_milestone) { create(:milestone, group: group) }
+    let_it_be(:subgroup_milestone) { create(:milestone, group: group.children[0].children[1]) }
+    let_it_be(:project_milestone) { create(:milestone, project: project) }
+    let(:data) do
+      { group_id: group.id, root_namespace_id: group.root_ancestor.id }
+    end
+
+    before do
+      stub_ee_application_setting(elasticsearch_search: true, elasticsearch_indexing: true)
+    end
+
+    context 'when group is not found' do
+      let(:data) do
+        { group_id: non_existing_record_id, root_namespace_id: group.root_ancestor.id }
+      end
+
+      it 'does not call by_project_namespace on Project' do
+        expect(Project).not_to receive(:by_project_namespace)
+        consume_event(subscriber: described_class, event: event)
+      end
+    end
+
+    it 'does not have N+1 queries' do
+      control = ActiveRecord::QueryRecorder.new(skip_cached: false) do
+        consume_event(subscriber: described_class, event: event)
+      end
+
+      create(:project, group: group.children[0].children[3])
+      create(:milestone, group: group.children[0].children[3])
+
+      expect { consume_event(subscriber: described_class, event: event) }.not_to exceed_all_query_limit(control)
+    end
+
+    it 'calls maintain_elasticsearch_update on each project' do
+      expect_next_found_instances_of(Project, 4) do |project|
+        expect(project).to receive(:maintain_elasticsearch_update).with(updated_attributes: ['archived'])
+      end
+      consume_event(subscriber: described_class, event: event)
+    end
+
+    describe 'group milestones' do
+      let(:tracked) { [] }
+
+      before do
+        allow(::Elastic::ProcessBookkeepingService).to receive(:track!) { |*refs| tracked.concat(refs) }
+      end
+
+      it 'tracks the milestones of the group and its descendants' do
+        consume_event(subscriber: described_class, event: event)
+
+        expect(tracked).to include(group_milestone, subgroup_milestone)
+        expect(tracked).not_to include(project_milestone)
+      end
+
+      context 'when elasticsearch limit indexing is enabled' do
+        before do
+          stub_ee_application_setting(elasticsearch_limit_indexing: true)
+          create(:elasticsearch_indexed_namespace, namespace: group.children[0])
+        end
+
+        it 'tracks only the milestones of indexed groups' do
+          consume_event(subscriber: described_class, event: event)
+
+          expect(tracked).to include(subgroup_milestone)
+          expect(tracked).not_to include(group_milestone)
+        end
+      end
+
+      context 'when no group in the hierarchy is indexed', :clean_gitlab_redis_cache do
+        before do
+          stub_ee_application_setting(elasticsearch_limit_indexing: true)
+        end
+
+        it 'does not track any milestones' do
+          expect(::Milestone).not_to receive(:of_groups)
+
+          consume_event(subscriber: described_class, event: event)
+        end
+      end
+    end
+
+    context 'when elasticsearch indexing is disabled' do
+      before do
+        stub_ee_application_setting(elasticsearch_indexing: false)
+      end
+
+      it 'does not call by_project_namespace on Project' do
+        expect(Project).not_to receive(:by_project_namespace)
+        consume_event(subscriber: described_class, event: event)
+      end
+    end
+  end
+end

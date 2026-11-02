@@ -1,0 +1,13 @@
+# @feature_category: duo_agent_platform
+
+query getAgentFlowSource($workflowId: AiDuoWorkflowsWorkflowID!) {
+  duoWorkflowWorkflows(workflowId: $workflowId) {
+    edges {
+      node {
+        id
+        sourceType
+        sourceLink
+      }
+    }
+  }
+}

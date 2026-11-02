@@ -1,0 +1,39 @@
+# Methods of Organizations::Organization that existed before Gitlab/OmniscientClassMethods.
+# Move them to the bounded context where they belong and remove them from this
+# list. Do not add new methods. Class methods have a `self.` prefix.
+# See https://docs.gitlab.com/development/software_design/#taming-omniscient-classes
+---
+Organizations::Organization:
+- add_owner
+- check_if_default_organization
+- check_if_last_organization
+- check_organization_reserved_name
+- check_visibility_level_allowed
+- check_visibility_level_broader_than_groups
+- default?
+- empty?
+- full_path
+- inspect
+- max_group_visibility_level
+- membership_for
+- organization_detail
+- owner?
+- owner_user_ids
+- root_path
+- scoped_path
+- scoped_paths?
+- self.default?
+- self.default_organization
+- self.find_by_id_with_isolation_record
+- self.find_by_namespace_path_with_isolation_record
+- self.find_by_path_with_isolation_record
+- self.find_by_personal_snippet_id_with_isolation_record
+- self.organization_via_namespace_route
+- self.search
+- to_param
+- under_maintenance?
+- unique_attributes
+- user?
+- validate_single_organization_on_self_managed
+- visibility_level_field
+- web_url

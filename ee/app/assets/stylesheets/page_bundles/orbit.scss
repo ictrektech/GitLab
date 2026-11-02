@@ -1,0 +1,155 @@
+@import 'page_bundles/mixins_and_variables_and_functions';
+
+// Content area offset: breadcrumb bar + content-body padding + borders/gaps.
+$orbit-content-offset: 73px;
+
+// --- Frosted glass panels ---
+// Translucent backgrounds with backdrop-filter blur used by overlays and
+// sidebars. These have no Tailwind equivalents (rgba alpha + backdrop-filter).
+
+.orbit-frosted-panel {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(12px);
+
+  // stylelint-disable-next-line gitlab/no-gl-class
+  .gl-dark & {
+    background: rgba(10, 10, 18, 0.92);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: $gl-color-neutral-50;
+  }
+}
+
+// --- Node detail overlay type label ---
+
+.node-detail-type-label {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+// --- Query editor: Monaco editor overrides ---
+// SourceEditor defaults to 500px height via framework/source_editor.scss.
+// Orbit sets use-dynamic-height=false and needs the editor to fill its
+// container instead. Dark-mode overrides nest under .gl-dark so they react
+// automatically when the system color mode toggles (per fe_guide/dark_mode.md).
+
+.orbit-editor-wrapper {
+  position: relative;
+  overflow: hidden;
+
+  [id^='source-editor-'],
+  .monaco-editor,
+  .monaco-editor .overflow-guard {
+    height: 100% !important;
+  }
+
+  .monaco-editor .line-numbers {
+    padding-right: 8px !important;
+  }
+
+  // stylelint-disable-next-line gitlab/no-gl-class
+  .gl-dark & {
+    .monaco-editor,
+    .monaco-scrollable-element,
+    .monaco-editor .overflow-guard,
+    .monaco-editor .margin {
+      background: #1e1e1e !important;
+    }
+
+    .monaco-editor .line-numbers {
+      color: $gl-color-neutral-400 !important;
+    }
+  }
+}
+
+$orbit-schema-edge-draw-duration: 380ms;
+$orbit-schema-edge-fade-duration: 200ms;
+$orbit-schema-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+@keyframes orbit-schema-edge-draw {
+  from {
+    stroke-dashoffset: var(--edge-length);
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes orbit-schema-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.orbit-schema-edge {
+  stroke: var(--gl-border-color-default);
+  stroke-width: 1;
+  transition: opacity $orbit-schema-edge-fade-duration ease-out;
+}
+
+.orbit-schema-edge-hidden {
+  opacity: 0;
+}
+
+.orbit-schema-edge-highlighted {
+  stroke: var(--gl-text-color-subtle);
+
+  line {
+    stroke-dasharray: var(--edge-length);
+    animation: orbit-schema-edge-draw $orbit-schema-edge-draw-duration $orbit-schema-ease-out
+      var(--edge-delay) both;
+  }
+}
+
+.orbit-schema-edge-arrow {
+  fill: var(--gl-text-color-subtle);
+  stroke: none;
+  animation: orbit-schema-fade-in $orbit-schema-edge-fade-duration ease-out
+    calc(var(--edge-delay) + #{$orbit-schema-edge-draw-duration}) both;
+}
+
+.orbit-schema-edge-label {
+  animation: orbit-schema-fade-in $orbit-schema-edge-fade-duration ease-out
+    calc(var(--edge-delay, 0ms) + #{$orbit-schema-edge-fade-duration}) both;
+}
+
+.orbit-schema-node-icon {
+  transition: box-shadow $orbit-schema-edge-fade-duration ease-out;
+}
+
+.orbit-schema-node-focused .orbit-schema-node-icon {
+  box-shadow: 0 0 0 3px var(--gl-background-color-subtle), 0 0 0 5px var(--gl-border-color-strong);
+}
+
+.orbit-schema-node-selected .orbit-schema-node-icon {
+  box-shadow: 0 0 0 3px var(--gl-background-color-subtle), 0 0 0 5px var(--gl-text-color-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-schema-edge,
+  .orbit-schema-node-icon {
+    transition: none;
+  }
+
+  .orbit-schema-edge-highlighted line,
+  .orbit-schema-edge-arrow,
+  .orbit-schema-edge-label {
+    animation: none;
+  }
+}
+
+.orbit-app-fill-viewport {
+  min-height: 36rem;
+
+  @include media-breakpoint-up(lg) {
+    height: var(
+      --panel-content-inner-height,
+      calc(100vh - #{$top-bar-height} - var(--header-height, 48px) - #{$orbit-content-offset})
+    );
+  }
+}

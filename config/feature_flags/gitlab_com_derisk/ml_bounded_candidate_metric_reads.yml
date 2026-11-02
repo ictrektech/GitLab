@@ -1,0 +1,10 @@
+---
+name: ml_bounded_candidate_metric_reads
+description: Embed only the most recent metric values on the ML run page, and read the CSV metric columns from the latest values
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635040
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263967
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635208
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

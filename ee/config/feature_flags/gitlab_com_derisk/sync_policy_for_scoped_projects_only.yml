@@ -1,0 +1,10 @@
+---
+name: sync_policy_for_scoped_projects_only
+description: Sync a policy update only to the projects listed in its old and new project scope
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/607604
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263738
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634967
+milestone: '19.6'
+group: group::policy management
+type: gitlab_com_derisk
+default_enabled: false

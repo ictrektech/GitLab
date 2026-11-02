@@ -1,0 +1,5 @@
+---
+Gitlab/AvoidGitlabDedicatedInstanceChecks:
+  Exclude:
+    - 'ee/lib/ee/sidebars/admin/menus/admin_settings_menu.rb'
+    - 'lib/gitlab/auth/editor_extensions/language_server_client_verifier.rb'

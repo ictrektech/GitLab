@@ -1,0 +1,10 @@
+---
+name: ci_project_jobs_artifacts_lateral_join
+description: Filter project jobs with artifacts using a LATERAL lookup instead of EXISTS, to prevent a PostgreSQL 18 plan flip.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/627993
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265102
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636485
+milestone: '19.6'
+group: group::ci platform
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,10 @@
+---
+name: ai_flow_trigger_goals
+description: Allow a flow trigger to define the goal it sends to its flow, per event type
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/627896
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/256658
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/630482
+milestone: '19.5'
+group: group::ai catalog
+type: gitlab_com_derisk
+default_enabled: false

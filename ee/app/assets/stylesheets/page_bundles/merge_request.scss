@@ -1,0 +1,7 @@
+@import '../../../../../app/assets/stylesheets/page_bundles/merge_request';
+@import '../components/severity_meter';
+
+.ai-overview-body {
+  grid-template-columns: 1fr 356px;
+  align-items: start;
+}

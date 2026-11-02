@@ -1,0 +1,16 @@
+# @feature_category: knowledge_graph
+query getOrbitAdminInstanceAccess {
+  orbit @gl_introduced(version: "19.4.0") {
+    access {
+      state
+      reason
+      trial {
+        expiresOn
+        offer {
+          durationDays
+          initialCredits
+        }
+      }
+    }
+  }
+}

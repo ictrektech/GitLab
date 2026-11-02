@@ -1,0 +1,30 @@
+# @feature_category: custom_dashboards_foundation
+
+#import "ee_else_ce/explore/analytics_dashboards/graphql/fragments/scope_group_permissions.fragment.graphql"
+
+# The top-level groups query for a dashboard that sets `requireDuoAgentPlatform`. Kept apart from
+# it so other dashboards never send `withDuoAgentPlatformEnabled`, which older backends reject.
+query getAnalyticsDashboardDuoAgentPlatformTopLevelGroups($after: String) {
+  groups(
+    topLevelOnly: true
+    allAvailable: false
+    withDuoAgentPlatformEnabled: true
+    sort: "name_asc"
+    first: 20
+    after: $after
+  ) {
+    nodes {
+      id
+      name
+      fullName
+      fullPath
+      projectsCount
+      descendantGroupsCount
+      ...AnalyticsDashboardScopeGroupPermissions
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

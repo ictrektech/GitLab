@@ -1,0 +1,15 @@
+# @feature_category: duo_agent_platform
+query getWorkflowMessageLineage($workflowId: AiDuoWorkflowsWorkflowID!) {
+  duoWorkflowWorkflows(workflowId: $workflowId) {
+    nodes {
+      id
+      latestCheckpoint {
+        duoMessages {
+          messageId
+          threadTs
+          parentTs
+        }
+      }
+    }
+  }
+}

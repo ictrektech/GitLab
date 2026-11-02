@@ -1,0 +1,10 @@
+# @feature_category: code_review_workflow
+mutation mrAiOverviewToggleResolve($id: DiscussionID!, $resolve: Boolean!) {
+  discussionToggleResolve(input: { id: $id, resolve: $resolve }) {
+    discussion {
+      id
+      resolved
+    }
+    errors
+  }
+}

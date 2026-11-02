@@ -1,0 +1,9 @@
+# @feature_category: navigation
+mutation deleteUserCallout($input: UserCalloutDeleteInput!) {
+  userCalloutDelete(input: $input) {
+    errors
+    userCallout {
+      featureName
+    }
+  }
+}

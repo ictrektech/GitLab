@@ -1,0 +1,139 @@
+---
+stage: Security Governance
+group: Security Controls
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see <https://handbook.gitlab.com/handbook/product/ux/technical-writing/#assignments>
+title: Security inventory
+description: Group-level visibility of assets, scanner coverage, and vulnerabilities.
+---
+
+{{< details >}}
+
+- Tier: Ultimate
+- Offering: GitLab.com, GitLab Self-Managed, GitLab Dedicated
+
+{{< /details >}}
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/16484) as a [beta](../../../policy/development_stages_support.md) in GitLab 18.2 with a flag named `security_inventory_dashboard`. Enabled by default.
+- [Generally available](https://gitlab.com/gitlab-org/gitlab/-/work_items/588619) in GitLab 18.9. Feature flag `security_inventory_dashboard` removed.
+- Vulnerability counts [changed](https://gitlab.com/gitlab-org/gitlab/-/work_items/600455) in GitLab 19.2 to exclude vulnerabilities that are no longer detected, aligning the security inventory with the security dashboard.
+
+{{< /history >}}
+
+Use the security inventory to visualize which assets you need to secure and understand the actions you need to take to improve security. A common phrase in security is, "you can't secure what you can't see." The security inventory provides visibility into the security posture of your organization's top-level groups, helps you identify coverage gaps, and enables you to make efficient, risk-based prioritization decisions.
+
+The security inventory shows:
+
+- Your groups, subgroups, and projects.
+- A summary of risk across the group's projects, including projects that need attention, have stale scans, or are unprotected.
+- Security scanner coverage for each project, regardless of how the scanner is enabled. Tool coverage reflects the scan status of the most recent pipeline on the default branch. Security scanners include:
+  - Static application security testing (SAST)
+  - Dependency scanning
+  - Container scanning
+  - Secret detection, including secret push protection
+  - Dynamic application security testing (DAST)
+  - Infrastructure-as-code (IaC) scanning
+- The number of vulnerabilities in each group or project, sorted by severity level. The count excludes vulnerabilities that are no longer detected.
+
+Track the development of the security inventory in [epic 16939](https://gitlab.com/groups/gitlab-org/-/work_items/16939). Share [your feedback](https://gitlab.com/gitlab-org/gitlab/-/issues/553062) as development continues on this feature.
+
+## View the security inventory
+
+Prerequisites:
+
+- You must have the Security Manager, Developer, Maintainer, or Owner role in the group to view the security inventory.
+
+To view the security inventory:
+
+1. In the top bar, select **Search or go to** and find your group.
+1. In the left sidebar, select **Secure** > **Security inventory**.
+1. Complete one of the following actions:
+   - To view a group's subgroups, projects, and security assets, select the group.
+   - To view a group or project's scanner coverage, search for the group or project.
+
+## Project status
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/632028) in GitLab 19.6 [with a flag](../../../administration/feature_flags/_index.md) named `security_inventory_projects_widget`. Enabled by default.
+
+{{< /history >}}
+
+> [!flag]
+> The availability of this feature is controlled by a feature flag.
+> For more information, see the history.
+
+The **Projects** card shows how many projects in the group have each of the following statuses. A project can have more than one status at the same time:
+
+- **Needs attention**: The project has at least one scanner with a [failed status](#scanner-coverage).
+- **Has stale scans**: The project has at least one scanner with a [stale status](#scanner-coverage).
+- **Unprotected**: The project has no security scanner configured.
+
+To filter the inventory by a status, select it in the card.
+
+## Scanner coverage
+
+{{< history >}}
+
+- Stale status was [introduced](https://gitlab.com/gitlab-org/gitlab/-/work_items/596022) in GitLab 19.0
+
+{{< /history >}}
+
+Security scanner status is evaluated when a default branch pipeline completes.
+Each security scanner shows one of the following coverage statuses for every project or group:
+
+- **Not enabled**: The scanner is not configured.
+- **Enabled**: The scanner is configured and completed successfully.
+- **Failed**: The scanner ran but did not complete successfully.
+- **Stale**: A previously enabled scanner has not run in the last three consecutive pipelines.
+
+For a project, each scanner shows a badge for its status. To view the last scan date and the
+pipeline job, hover over the badge. Secret push protection has no last scan date because it runs
+during each `git push`, not in a pipeline.
+
+For a group, each scanner shows a bar with the share of projects in each status.
+To view the number of projects in each status, hover over the bar.
+
+## Filter projects in the security inventory
+
+{{< history >}}
+
+- [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/552224) in GitLab 18.5 [with a feature flag](../../../administration/feature_flags/_index.md) named `security_inventory_filtering`. Enabled by default.
+- Feature flag `security_inventory_filtering` removed in GitLab 19.4.
+- Filter persistence in the URL [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/580024) in GitLab 19.5.
+
+{{< /history >}}
+
+You can filter projects in the security inventory to focus on specific areas of interest.
+The following filters are available:
+
+- **Status**: Filter projects by status (like **needs attention**, **has stale scans**, **unprotected**, or **has scanners enabled**). For example, show projects where `Status = Unprotected`.
+- **Vulnerability count**: Filter projects based on the number of identified vulnerabilities. For example, show projects with `critical vulnerabilities ≥ 10`.
+- **Tool coverage**: Filter projects by the status of security analyzers (like **enabled**, **not enabled**, or **failed**). For example, show projects where `Advanced SAST = enabled`.
+- **Project name**: Search for specific projects by name.
+- **Security attributes**: Filter projects by the [security attributes](../attributes/_index.md) applied to them.
+
+These filters help you narrow down results in large inventories and make it easier to identify projects that require immediate attention.
+
+The URL keeps the filters you apply.
+You can share or bookmark a filtered view by copying the URL from your browser.
+
+## Related topics
+
+- [Security dashboard](../security_dashboard/_index.md)
+- [Vulnerability reports](../vulnerability_report/_index.md)
+- GraphQL references:
+  - [AnalyzerGroupStatusType](../../../api/graphql/reference/objects.md#analyzergroupstatustype) - Counts for each analyzer status in the group and subgroups.
+  - [AnalyzerProjectStatusType](../../../api/graphql/reference/objects.md#analyzerprojectstatustype) - Analyzer status (success/fail) for projects.
+  - [SecurityPostureCounters](../../../api/graphql/reference/objects.md#securityposturecounters) - Counts of projects by project status in the group.
+  - [VulnerabilityNamespaceStatisticType](../../../api/graphql/reference/objects.md#vulnerabilitynamespacestatistictype) - Counts for each vulnerability severity in the group and its subgroups.
+  - [VulnerabilityStatisticType](../../../api/graphql/reference/objects.md#vulnerabilitystatistictype) - Counts for each vulnerability severity in the project.
+
+## Troubleshooting
+
+When working with the security inventory, you might encounter the following issues:
+
+### Security inventory menu item missing
+
+Some users do not have the required permissions to access the **Security inventory** menu item. The menu item only displays for groups when the authenticated user has the Security Manager, Developer, Maintainer, or Owner role.

@@ -1,0 +1,11 @@
+# @feature_category: custom_dashboards_foundation
+
+# Which of the given groups have Duo Agent Platform turned on for their top-level group. A
+# project is checked through the group it sits in.
+query getAnalyticsDashboardDuoAgentPlatformGroups($ids: [ID!]) {
+  groups(ids: $ids, allAvailable: false, withDuoAgentPlatformEnabled: true) {
+    nodes {
+      id
+    }
+  }
+}

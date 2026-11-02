@@ -1,0 +1,10 @@
+---
+name: bounded_tags_api_offset_pagination
+description: Bound non-search Tags REST API offset retrieval using FindAllTags
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/614152
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/262866
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634753
+milestone: '19.6'
+group: group::source code
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,32 @@
+# @feature_category: dap_triggers
+#import "~/graphql_shared/fragments/page_info.fragment.graphql"
+
+query getAutomationRecentRuns(
+  $projectPath: ID!
+  $id: AiFlowTriggerID!
+  $first: Int
+  $last: Int
+  $after: String
+  $before: String
+) {
+  project(fullPath: $projectPath) {
+    id
+    aiFlowTriggers(ids: [$id]) {
+      nodes {
+        id
+        sessions(first: $first, last: $last, after: $after, before: $before)
+          @gl_introduced(version: "19.6.0") {
+          nodes {
+            id
+            status
+            createdAt
+            updatedAt
+          }
+          pageInfo {
+            ...PageInfo
+          }
+        }
+      }
+    }
+  }
+}

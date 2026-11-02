@@ -1,0 +1,116 @@
+# Duo Agent Platform configuration for gitlab-org/gitlab.
+# Docs: https://docs.gitlab.com/user/duo_agent_platform/flows/execution/
+# Tracking issue: https://gitlab.com/gitlab-org/gitlab/-/work_items/593976
+
+# DEFAULT_CI_IMAGE plus a bare copy of master at /opt/duo/ref.git, rebuilt
+# weekly by build-duo-session-image (.gitlab/ci/duo-session-image.gitlab-ci.yml).
+image: "registry.gitlab.com/gitlab-org/gitlab/duo-session:latest"
+
+git_strategy:
+  reference_repository_path: /opt/duo/ref.git
+
+setup_script:
+  # UTF-8 locale — the image defaults to POSIX, and pre-push hooks crash on
+  # UTF-8 content without it ("invalid byte sequence in US-ASCII").
+  - export LANG=C.UTF-8
+  - export LC_ALL=C.UTF-8
+
+  # SRT sandbox — fail closed, no || true.
+  - apt-get update -qq && apt-get install -y -qq bubblewrap socat ripgrep jq
+  - npm install -g @anthropic-ai/sandbox-runtime@0.0.77 --ignore-scripts
+  # Verify sandbox dependencies and fail closed.
+  - srt ls
+
+  # Ruby gems — install to vendor/bundle so the path is covered by the
+  # existing /vendor/bundle/* entry in .gitignore, preventing gem stubs
+  # from being staged by git add -A.
+  - bundle config set --local path vendor/bundle
+  - bundle config set --local frozen true
+  # Override BUNDLE_WITHOUT from .gitlab-ci.yml (which excludes the
+  # :development group). lefthook lives in :development and is required
+  # for the pre-push hooks installed below, so we must include it.
+  - bundle config unset --local without
+  - bundle install --jobs 4 --retry 3
+
+  # Node deps — --ignore-scripts avoids arbitrary postinstall network calls.
+  - yarn install --frozen-lockfile --ignore-scripts
+
+  # Lint tooling for lefthook hooks (markdownlint, vale, lychee, gitleaks).
+  # These are managed by .tool-versions, not bundle/yarn, so install them via
+  # mise. setup_script runs outside the SRT sandbox, so these downloads are
+  # not subject to network_policy.
+  - export MISE_DATA_DIR="$CI_PROJECT_DIR/.cache/mise/data"
+  - export MISE_CACHE_DIR="$CI_PROJECT_DIR/.cache/mise/cache"
+  # Ignore the repo's mise.toml (its ruby plugin is unneeded — the image
+  # already ships Ruby — and it requires interactive trust). Tool versions
+  # still come from .tool-versions, which we trust non-interactively.
+  - export MISE_IGNORED_CONFIG_PATHS="$CI_PROJECT_DIR/mise.toml"
+  - export MISE_TRUSTED_CONFIG_PATHS="$CI_PROJECT_DIR"
+  # Pin the mise version (the install script still auto-detects arch and
+  # checksum-verifies the downloaded binary).
+  - curl -sSL https://mise.run | MISE_VERSION=v2026.6.1 sh
+  - export PATH="$HOME/.local/bin:$MISE_DATA_DIR/shims:$PATH"
+  # Versions are pinned in .tool-versions.
+  - mise install markdownlint-cli2 vale lychee gitleaks
+  - eval "$(mise env)"
+
+  # yamllint (pre-push hook) is a pip package; ~/.local/bin is on PATH above.
+  - pip install --user --quiet yamllint==1.37.1
+
+  # The gitleaks hook compares config/gitleaks-local.toml against
+  # config/gitleaks.toml; regenerate it to keep them in sync.
+  - scripts/generate-gitleaks-local-config.sh
+
+  # Gitignored Rails configs — a fresh checkout lacks them, so rspec and
+  # Rails-booting lefthook hooks (e.g. openapi_docs) fail.
+  #
+  # decomposed-sec is the template CI uses for normal rspec jobs (DECOMPOSED_DB
+  # and SEC_DECOMPOSED_DB both default to "true"), so specs behave here the way
+  # they do in CI: separate main, ci and sec databases. The rest of
+  # setup_database_yml is intentionally not mirrored — geo/embedding stay so
+  # rspec-ee works, and the host/username rewrites exist only for CI's docker
+  # service and permission testing, while PostgreSQL here is local as postgres.
+  - cp config/database.yml.decomposed-sec-postgresql config/database.yml
+  # As in scripts/prepare_build.sh: the image ships git under /usr/local/bin.
+  - cp config/gitlab.yml.example config/gitlab.yml
+  - "sed -i 's|bin_path: /usr/bin/git|bin_path: /usr/local/bin/git|' config/gitlab.yml"
+
+  # PostgreSQL and Redis for backend specs — the image ships only the PG
+  # client and the sandbox proxy blocks apt mid-session. Soft-fail so non-DB
+  # sessions stay unaffected; PG trust auth mirrors CI (POSTGRES_HOST_AUTH_METHOD: trust).
+  - |
+    apt-get install -y -qq postgresql-17 redis-server &&
+      sed -i -E 's/^(host[[:space:]]+all[[:space:]]+all[[:space:]]+(127\.0\.0\.1\/32|::1\/128)[[:space:]]+)[^[:space:]]+$/\1trust/' /etc/postgresql/17/main/pg_hba.conf &&
+      # The package postinst may already have started the cluster, in which
+      # case start exits non-zero; restart also picks up the edited pg_hba.conf.
+      { pg_ctlcluster 17 main start || pg_ctlcluster 17 main restart; } &&
+      psql -h localhost -U postgres -d postgres -c 'SELECT 1' &&
+      redis-server --daemonize yes &&
+      # daemonize() forks before the listener is bound, so wait for readiness
+      # instead of racing the first ping.
+      { for _ in 1 2 3 4 5; do redis-cli ping >/dev/null 2>&1 && break; sleep 1; done; redis-cli ping; } ||
+      echo "WARNING: PostgreSQL/Redis setup failed; backend specs cannot run in this session"
+
+  - bundle exec lefthook install
+
+cache:
+  key:
+    files:
+      - Gemfile.lock
+      - yarn.lock
+      - .tool-versions
+  paths:
+    - vendor/bundle
+    - node_modules
+    - .cache/mise
+
+network_policy:
+  # Deny-by-default. The recommended allowlist exposes ~100+ domains —
+  # too broad for a repo with full source access. See !233094 note 3285344526.
+  include_recommended_allowed: false
+  allow_all_unix_sockets: false
+  allowed_domains:
+    - rubygems.org
+    - registry.npmjs.org
+    - registry.yarnpkg.com
+  denied_domains: []

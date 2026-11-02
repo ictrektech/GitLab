@@ -1,0 +1,45 @@
+# @feature_category: consumables_cost_management
+
+query getUserSubscriptionUsage($namespacePath: ID, $username: String) {
+  subscriptionUsage(namespacePath: $namespacePath) {
+    enabled
+
+    lastEventTransactionAt
+    subscriptionPortalUsageDashboardUrl
+    purchaseCreditsPath
+
+    startDate
+    endDate
+
+    paidTierTrial {
+      isActive
+    }
+
+    usersUsage {
+      users(username: $username) {
+        nodes {
+          id
+          name
+          username
+          avatarUrl
+
+          usage {
+            totalCredits
+            creditsUsed
+            monthlyCommitmentCreditsUsed
+            monthlyWaiverCreditsUsed
+            overageCreditsUsed
+            paidTierTrialCreditsUsed
+            totalCreditsUsed
+            nonBillableCreditsUsed @gl_introduced(version: "19.6.0")
+          }
+
+          usedFlowTypes(includeNonBillable: true) {
+            id
+            title
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,344 @@
+# frozen_string_literal: true
+
+require 'spec_helper'
+
+RSpec.describe Ai::Catalog::Flows::CreateService, feature_category: :ai_catalog_curation do
+  include Ai::Catalog::TestHelpers
+
+  let_it_be(:maintainer) { create(:user) }
+  let_it_be(:project) { create(:project, :in_group, maintainers: maintainer) }
+
+  let(:user) { maintainer }
+  let(:definition) do
+    <<~YAML
+      version: v1
+      environment: ambient
+      components:
+        - name: main_agent
+          type: AgentComponent
+          prompt_id: test_prompt
+      routers: []
+      flow:
+        entry_point: main_agent
+    YAML
+  end
+
+  let(:params) do
+    {
+      name: 'Flow',
+      description: 'Description',
+      visibility: :restricted,
+      definition: definition
+    }
+  end
+
+  before do
+    enable_ai_catalog
+  end
+
+  subject(:service) { described_class.new(project: project, current_user: user, params: params) }
+
+  it_behaves_like Ai::Catalog::Items::BaseCreateService do
+    let(:expected_item_type) { Ai::Catalog::Item::FLOW_TYPE }
+    let(:expected_item_schema_version) { Ai::Catalog::ItemVersion::FLOW_SCHEMA_VERSION }
+    let(:expected_audit_event_create_item_message) { 'Created a new restricted AI flow with no tools' }
+    let(:expected_audit_event_item_name) { 'AI flow' }
+    let(:expected_updated_definition) do
+      YAML.safe_load(definition).merge('yaml_definition' => definition)
+    end
+
+    let(:expected_create_event_properties) do
+      {
+        label: 'flow',
+        item_type: 'custom_flow',
+        item_version: '1.0.0',
+        item_schema_version: 'v1',
+        custom_item_id: kind_of(Integer),
+        components: 'AgentComponent'
+      }
+    end
+
+    it_behaves_like 'yaml definition create service behavior'
+
+    context 'when just the ai_catalog StageCheck passes' do
+      let(:flows_available) { false }
+
+      before do
+        allow(Gitlab::Llm::StageCheck).to receive(:available?).and_call_original
+        allow(Gitlab::Llm::StageCheck).to receive(:available?).with(project, :ai_catalog).and_return(true)
+        allow(Gitlab::Llm::StageCheck).to receive(:available?)
+          .with(project, :ai_catalog_flows).and_return(flows_available)
+      end
+
+      it_behaves_like 'an error response', 'You have insufficient permissions'
+
+      context 'and the ai_catalog_flows StageCheck also passes' do
+        let(:flows_available) { true }
+
+        it 'is successful' do
+          expect(execute_service).to be_success
+        end
+      end
+    end
+
+    context 'when prompts are present' do
+      let(:definition) do
+        super() + <<~YAML
+          prompts:
+            - prompt_id: local_prompt
+              name: Local Test Prompt
+              prompt_template:
+                system: You are a helpful assistant
+                user: Help me with {{goal}}
+              unit_primitives: []
+        YAML
+      end
+
+      it 'creates a flow with prompts' do
+        expect(execute_service).to be_success
+
+        item = Ai::Catalog::Item.last
+        definition_hash = item.latest_version.definition
+
+        expect(definition_hash['prompts']).to be_present
+        expect(definition_hash['prompts'].first).to include(
+          'prompt_id' => 'local_prompt',
+          'name' => 'Local Test Prompt',
+          'unit_primitives' => []
+        )
+      end
+
+      context 'when unit_primitives is missing from prompts' do
+        let(:definition) do
+          <<~YAML
+            version: v1
+            environment: ambient
+            components:
+              - name: main_agent
+                type: AgentComponent
+                prompt_id: test_prompt
+            routers: []
+            flow:
+              entry_point: main_agent
+            prompts:
+              - prompt_id: local_prompt
+                name: Local Test Prompt
+                prompt_template:
+                  system: You are a helpful assistant
+                  user: Help me with {{goal}}
+          YAML
+        end
+
+        it_behaves_like 'an error response', [
+          "Latest version definition object at `/prompts/0` is missing required properties: unit_primitives",
+          "Versions is invalid"
+        ]
+      end
+    end
+
+    context 'when the definition has an include section' do
+      let_it_be(:referenced_agent) do
+        create(:ai_catalog_agent, :public, project: project).tap do |item|
+          create(:ai_catalog_agent_version, :released, item: item, version: '1.2.0')
+        end
+      end
+
+      let(:definition) do
+        super() + <<~YAML
+          include:
+            - source: ai-catalog
+              item_type: agent
+              item_id: "#{referenced_agent.id}"
+              version: "1.2.0"
+        YAML
+      end
+
+      it 'creates a flow with the include entries' do
+        expect(execute_service).to be_success
+
+        item = Ai::Catalog::Item.last
+        expect(item.latest_version.definition['include']).to contain_exactly(
+          {
+            'source' => 'ai-catalog',
+            'item_type' => 'agent',
+            'item_id' => referenced_agent.id.to_s,
+            'version' => '1.2.0'
+          }
+        )
+      end
+
+      it 'records a dependency row pinning the referenced version' do
+        expect(execute_service).to be_success
+
+        version = Ai::Catalog::Item.last.latest_version
+        dependency = version.dependencies.sole
+
+        expect(dependency.dependency_id).to eq(referenced_agent.id)
+        expect(dependency.dependency_version.version).to eq('1.2.0')
+      end
+
+      context 'when the referenced agent is deleted before its dependency row is written' do
+        before do
+          allow(Ai::Catalog::ItemVersionDependency).to receive(:bulk_insert!)
+            .and_raise(ActiveRecord::InvalidForeignKey)
+        end
+
+        it 'returns an error and creates no flow' do
+          expect { execute_service }.not_to change { Ai::Catalog::Item.count }
+          expect(execute_service).to be_error
+          expect(execute_service.message).to contain_exactly(
+            'Referenced agents changed while the flow was saved. Try again.'
+          )
+        end
+      end
+
+      context 'when the referenced agent cannot be resolved' do
+        let(:definition) do
+          super().sub("item_id: \"#{referenced_agent.id}\"", 'item_id: "0"')
+        end
+
+        it 'blocks the save naming the reference' do
+          response = execute_service
+
+          expect(response).to be_error
+          expect(response.message.first).to include("Agent '0'")
+        end
+      end
+
+      context 'when no visibility is given and the agent is private' do
+        let_it_be(:private_agent) do
+          create(:ai_catalog_agent, :private, project: project).tap do |item|
+            create(:ai_catalog_agent_version, :released, item: item, version: '1.2.0')
+          end
+        end
+
+        let(:params) { super().except(:visibility) }
+        let(:definition) do
+          super().sub("item_id: \"#{referenced_agent.id}\"", "item_id: \"#{private_agent.id}\"")
+        end
+
+        it 'checks the references against a private flow' do
+          expect(execute_service).to be_success
+          expect(Ai::Catalog::Item.last).to be_visibility_private
+        end
+      end
+
+      context 'when ai_catalog_flow_agent_references is disabled' do
+        before do
+          stub_feature_flags(ai_catalog_flow_agent_references: false)
+        end
+
+        it_behaves_like 'an error response', 'Referencing AI Catalog items with include is not available'
+
+        it 'does not call DWS validation' do
+          expect(Ai::DuoWorkflow::DuoWorkflowService::Client).not_to receive(:new)
+
+          execute_service
+        end
+      end
+    end
+
+    context 'when ai_catalog_flow_agent_references is disabled and the definition has no include section' do
+      before do
+        stub_feature_flags(ai_catalog_flow_agent_references: false)
+      end
+
+      it 'creates the flow without recording dependency rows' do
+        expect(execute_service).to be_success
+        expect(Ai::Catalog::Item.last.latest_version.dependencies).to be_empty
+      end
+    end
+
+    context 'with self-hosted DWS configuration' do
+      let_it_be(:self_hosted_model) { create(:ai_self_hosted_model) }
+      let_it_be(:feature_setting) do
+        create(:ai_feature_setting, :duo_agent_platform, self_hosted_model: self_hosted_model)
+      end
+
+      let(:self_hosted_url) { 'dws.example.com:50052' }
+      let(:self_hosted_secure) { false }
+
+      before do
+        stub_application_setting(
+          duo_agent_platform_service_url: self_hosted_url,
+          self_hosted_duo_agent_platform_service_secure: self_hosted_secure
+        )
+      end
+
+      it 'initializes the DWS client with the self-hosted URL and secure setting' do
+        expect(::Ai::DuoWorkflow::DuoWorkflowService::Client).to receive(:new)
+          .with(hash_including(
+            duo_workflow_service_url: self_hosted_url,
+            secure: self_hosted_secure
+          ))
+
+        execute_service
+      end
+
+      context 'when self-hosted secure is enabled' do
+        let(:self_hosted_secure) { true }
+
+        it 'initializes the DWS client with secure: true' do
+          expect(::Ai::DuoWorkflow::DuoWorkflowService::Client).to receive(:new)
+            .with(hash_including(
+              duo_workflow_service_url: self_hosted_url,
+              secure: true
+            ))
+
+          execute_service
+        end
+      end
+
+      context 'when self-hosted URL is different' do
+        let(:self_hosted_url) { 'other-server:9090' }
+
+        it 'initializes the DWS client with the updated URL' do
+          expect(::Ai::DuoWorkflow::DuoWorkflowService::Client).to receive(:new)
+            .with(hash_including(
+              duo_workflow_service_url: 'other-server:9090',
+              secure: self_hosted_secure
+            ))
+
+          execute_service
+        end
+      end
+    end
+
+    context 'when DWS returns validation errors' do
+      before do
+        allow_next_instance_of(Ai::DuoWorkflow::DuoWorkflowService::Client) do |client|
+          allow(client).to receive(:validate_flow_config)
+            .and_return(ServiceResponse.error(message: ['Component missing input variables: goal']))
+        end
+      end
+
+      it_behaves_like 'an error response', ['Component missing input variables: goal']
+    end
+
+    context 'when DWS is unavailable' do
+      before do
+        allow_next_instance_of(Ai::DuoWorkflow::DuoWorkflowService::Client) do |client|
+          allow(client).to receive(:validate_flow_config)
+            .and_return(
+              ServiceResponse.error(
+                message: 'Unable to validate flow configuration. Duo Workflow Service is currently unavailable.'
+              )
+            )
+        end
+      end
+
+      it_behaves_like 'an error response',
+        ['Unable to validate flow configuration. Duo Workflow Service is currently unavailable.']
+    end
+
+    it_behaves_like 'rejects an oversized YAML definition before validation' do
+      let(:oversized_definition) { "#{definition}# #{'a' * 40.kilobytes}\n" }
+
+      it 'does not call DWS' do
+        expect(Ai::DuoWorkflow::DuoWorkflowService::Client).not_to receive(:new)
+
+        execute_service
+      end
+    end
+  end
+end

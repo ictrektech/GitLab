@@ -1,0 +1,55 @@
+# @feature_category: consumables_cost_management
+#import "~/graphql_shared/fragments/page_info.fragment.graphql"
+
+query getUserSubscriptionUsageEvents(
+  $namespacePath: ID
+  $username: String
+  $flowTypes: [String]
+  $first: Int
+  $last: Int
+  $after: String
+  $before: String
+) {
+  subscriptionUsage(namespacePath: $namespacePath) {
+    usersUsage {
+      users(username: $username) {
+        nodes {
+          id
+          events(
+            flowTypes: $flowTypes
+            first: $first
+            last: $last
+            after: $after
+            before: $before
+            includeNonBillable: true
+          ) {
+            nodes {
+              timestamp
+              flowType
+              location {
+                __typename
+                ... on Project {
+                  id
+                  name
+                  webUrl
+                }
+                ... on Group {
+                  id
+                  name
+                  webUrl
+                }
+              }
+              creditsUsed
+              sessionLink
+              billable @gl_introduced(version: "19.6.0")
+              skipReason @gl_introduced(version: "19.6.0")
+            }
+            pageInfo {
+              ...PageInfo
+            }
+          }
+        }
+      }
+    }
+  }
+}

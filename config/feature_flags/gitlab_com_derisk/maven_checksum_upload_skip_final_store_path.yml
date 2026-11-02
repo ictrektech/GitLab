@@ -1,0 +1,11 @@
+---
+name: maven_checksum_upload_skip_final_store_path
+description: Authorize Maven .sha1 and .md5 uploads to a temporary path instead of
+  a final store path
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636473
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265501
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636477
+milestone: '19.6'
+group: group::package registry
+type: gitlab_com_derisk
+default_enabled: false

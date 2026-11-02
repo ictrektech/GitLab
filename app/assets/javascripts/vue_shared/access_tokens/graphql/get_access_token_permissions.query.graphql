@@ -1,0 +1,14 @@
+# @feature_category: system_access
+query getAccessTokenPermissions {
+  accessTokenPermissions {
+    name
+    action
+    description
+    category
+    categoryName
+    resource
+    resourceName
+    resourceDescription
+    boundaries
+  }
+}

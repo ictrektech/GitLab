@@ -1,0 +1,7 @@
+# @feature_category: dap_triggers
+
+mutation deleteAiFlowTrigger($id: AiFlowTriggerID!) {
+  aiFlowTriggerDelete(input: { id: $id }) {
+    errors
+  }
+}

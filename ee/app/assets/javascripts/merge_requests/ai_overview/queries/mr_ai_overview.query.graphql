@@ -1,0 +1,30 @@
+#import "~/graphql_shared/fragments/user.fragment.graphql"
+#import "./mr_ai_overview_fields.fragment.graphql"
+#import "./mr_ai_overview_reviewers.fragment.graphql"
+
+# @feature_category: code_review_workflow
+query mrAiOverview($projectPath: ID!, $iid: String!) {
+  project(fullPath: $projectPath) {
+    id
+    mergeRequest(iid: $iid) {
+      ...MrAiOverviewFields
+      ...MrAiOverviewReviewers
+      iid
+      webPath
+      diffRefs {
+        baseSha
+        startSha
+        headSha
+      }
+      descriptionHtml
+      author {
+        ...User
+      }
+      userPermissions {
+        updateMergeRequest
+        createNote
+        pushToSourceBranch
+      }
+    }
+  }
+}

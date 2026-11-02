@@ -1,0 +1,16 @@
+# @feature_category: duo_agent_platform
+query getDuoWorkflowStatusCheck($projectPath: ID!) {
+  project(fullPath: $projectPath) {
+    id
+    webPath
+    repository {
+      empty
+    }
+    duoWorkflowStatusCheck {
+      enabled
+      remoteFlowsEnabled
+      foundationalFlowsEnabled
+      createDuoWorkflowForCiAllowed
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# @feature_category: knowledge_graph
+query getOrbitQueryTemplates {
+  orbit @gl_introduced(version: "19.4.0") {
+    queryTemplates @gl_introduced(version: "19.4.0") {
+      name
+      description
+      query
+    }
+  }
+}

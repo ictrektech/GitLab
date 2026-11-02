@@ -1,0 +1,21 @@
+# @feature_category: knowledge_graph
+query getOrbitItemCounts($first: Int = 50) {
+  orbit @gl_introduced(version: "19.4.0") {
+    memberGroups(enabled: true, first: $first) @gl_introduced(version: "19.4.0") {
+      nodes {
+        id
+        orbit {
+          itemCounts {
+            domains {
+              name
+              entities {
+                name
+                count
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

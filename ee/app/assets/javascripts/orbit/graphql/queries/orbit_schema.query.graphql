@@ -1,0 +1,46 @@
+# @feature_category: knowledge_graph
+query getOrbitSchema {
+  orbit {
+    schema @gl_introduced(version: "19.4.0") {
+      nodes {
+        nodes {
+          name
+          description
+          domain {
+            name
+          }
+          primaryKey
+          labelProperty
+          properties {
+            nodes {
+              name
+              dataType
+              nullable
+              enumValues
+            }
+          }
+          display {
+            color
+            size
+          }
+        }
+      }
+      edges {
+        nodes {
+          name
+          description
+          endpoints {
+            nodes {
+              source {
+                name
+              }
+              target {
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

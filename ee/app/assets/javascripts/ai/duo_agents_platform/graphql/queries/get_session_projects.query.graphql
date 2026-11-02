@@ -1,0 +1,7 @@
+# @feature_category: duo_agent_platform
+query getSessionProjects {
+  duoWorkflowRecentSessionProjects @gl_introduced(version: "19.5.0") {
+    id
+    nameWithNamespace
+  }
+}

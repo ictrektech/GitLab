@@ -1,0 +1,34 @@
+# @feature_category: dependency_firewall
+#import "ee/security_orchestration/graphql/fragments/scan_policy_source.fragment.graphql"
+
+query getProjectDependencyFirewallRuleActivity($fullPath: ID!, $from: Date) {
+  dependencyFirewall: project(fullPath: $fullPath) {
+    id
+    dependencyFirewallActivitySummary(from: $from) {
+      blocked
+      warned
+      totalTriggers
+      vulnerabilitiesPrevented @gl_introduced(version: "19.5.0")
+      vulnerabilitiesPreventedBySeverity @gl_introduced(version: "19.5.0") {
+        severity
+        count
+      }
+      maliciousPackagesPrevented @gl_introduced(version: "19.5.0")
+      maliciousPackagesWarnedOnly @gl_introduced(version: "19.5.0")
+      licenseRisksPrevented @gl_introduced(version: "19.5.0")
+      licenseRisksWarnedOnly @gl_introduced(version: "19.5.0")
+    }
+    dependencyFirewallRuleActivity(from: $from) {
+      id
+      policyName
+      mode
+      enabled
+      lastModified {
+        at
+      }
+      source {
+        ...SecurityPolicySource
+      }
+    }
+  }
+}

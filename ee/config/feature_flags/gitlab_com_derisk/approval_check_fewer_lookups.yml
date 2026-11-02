@@ -1,0 +1,11 @@
+---
+name: approval_check_fewer_lookups
+description: Read the temporarily unapproved Redis key once per merge request instead of
+  once per caller in the approval mergeability check
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631601
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263468
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634668
+milestone: '19.6'
+group: group::code review
+type: gitlab_com_derisk
+default_enabled: false

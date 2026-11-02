@@ -1,0 +1,43 @@
+# @feature_category: portfolio_management
+#import "~/graphql_shared/fragments/page_info.fragment.graphql"
+
+query groupMilestonesEE(
+  $fullPath: ID!
+  $state: MilestoneStateEnum
+  $timeframe: Timeframe
+  $includeDescendants: Boolean
+  $includeAncestors: Boolean
+  $searchTitle: String
+  $first: Int
+  $after: String
+) {
+  group(fullPath: $fullPath) {
+    id
+    name
+    milestones(
+      state: $state
+      includeDescendants: $includeDescendants
+      includeAncestors: $includeAncestors
+      timeframe: $timeframe
+      searchTitle: $searchTitle
+      first: $first
+      after: $after
+    ) {
+      nodes {
+        id
+        description
+        title
+        state
+        dueDate
+        startDate
+        webPath
+        projectMilestone
+        groupMilestone
+        subgroupMilestone
+      }
+      pageInfo {
+        ...PageInfo
+      }
+    }
+  }
+}

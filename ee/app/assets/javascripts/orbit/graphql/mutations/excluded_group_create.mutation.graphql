@@ -1,0 +1,12 @@
+# @feature_category: knowledge_graph
+mutation orbitExcludedGroupCreate($groupPath: ID!) {
+  orbitExcludedGroupCreate(input: { groupPath: $groupPath }) @gl_introduced(version: "19.4.0") {
+    group {
+      id
+      name
+      fullPath
+      avatarUrl
+    }
+    errors
+  }
+}

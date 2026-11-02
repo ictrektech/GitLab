@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://gitlab.com/gitlab-org/caproni/-/raw/main/schema/config.v2.schema.json
+# AI Gateway and the agentic-mock Duo Workflow Service for the Duo Agent Platform scenario.
+# Opt-in via caproni.local.yaml -- see README
+
+deployers:
+  gitlab:
+    helm:
+      # The AI Gateway image is large, and pulled on every run
+      timeout: 15m
+      dynamic_overrides:
+        - type: inline
+          value_map:
+            ai-gateway.install: true
+            # What the omnibus duo-agent-platform job runs: DWS from master, matching GitLab.com
+            ai-gateway.image.tag: latest
+            ai-gateway.logging.level: debug
+            # One container starts both services, which outlasts the default probe grace
+            ai-gateway.livenessProbe.initialDelaySeconds: 60
+            ai-gateway.readinessProbe.initialDelaySeconds: 30
+            # Otherwise DWS prefetches JWKS from GitLab and CustomersDot at startup and exits
+            ai-gateway.duoWorkflow.authEnabled: false
+            ai-gateway.extraEnvironmentVariables:
+              # The deterministic mock model: no LLM call, the goal's directives drive the flow
+              - name: AIGW_MOCK_MODEL_RESPONSES
+                value: "true"
+              - name: AIGW_USE_AGENTIC_MOCK
+                value: "true"
+              - name: AIGW_CUSTOMER_PORTAL_URL
+                value: https://customers.staging.gitlab.com
+
+            global.extraEnv.AI_GATEWAY_URL: http://gitlab-ai-gateway.gitlab.svc
+            global.extraEnv.LLM_DEBUG: "true"
+            # The flow's CI job reaches DWS through Workhorse, so only pods dial this
+            global.extraEnv.GITLAB_DUO_WORKFLOW_SERVICE_URL: gitlab-ai-gateway.gitlab.svc:50052
+            global.extraEnv.GITLAB_DUO_WORKFLOW_SECURE: "false"

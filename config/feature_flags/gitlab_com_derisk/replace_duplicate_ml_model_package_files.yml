@@ -1,0 +1,10 @@
+---
+name: replace_duplicate_ml_model_package_files
+description: Replace an existing model registry package file when a file with the same name is uploaded
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635048
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265806
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/issues/636681
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

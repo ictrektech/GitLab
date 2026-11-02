@@ -1,0 +1,11 @@
+# @feature_category: security_policy_management
+
+mutation governPolicyDelete(
+  $organizationId: OrganizationsOrganizationID
+  $groupPath: ID
+  $id: Int!
+) {
+  governPolicyDelete(input: { organizationId: $organizationId, groupPath: $groupPath, id: $id }) {
+    errors
+  }
+}

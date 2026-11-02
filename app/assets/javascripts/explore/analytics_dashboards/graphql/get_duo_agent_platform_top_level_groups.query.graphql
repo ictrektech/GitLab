@@ -1,0 +1,23 @@
+# @feature_category: custom_dashboards_foundation
+
+#import "ee_else_ce/explore/analytics_dashboards/graphql/fragments/scope_group_permissions.fragment.graphql"
+
+# Only `requireDuoAgentPlatform` dashboards run this, and none exist in CE, whose schema has no
+# `withDuoAgentPlatformEnabled`. The EE query of the same file name is the real one.
+query getAnalyticsDashboardDuoAgentPlatformTopLevelGroupsCE($after: String) {
+  groups(topLevelOnly: true, allAvailable: false, sort: "name_asc", first: 20, after: $after) {
+    nodes {
+      id
+      name
+      fullName
+      fullPath
+      projectsCount
+      descendantGroupsCount
+      ...AnalyticsDashboardScopeGroupPermissions
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

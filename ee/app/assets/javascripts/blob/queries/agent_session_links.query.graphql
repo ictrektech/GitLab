@@ -1,0 +1,45 @@
+# @feature_category: source_code_management
+
+# Split from getAgentSession to keep each query under the complexity limit.
+query getAgentSessionLinks($workflowId: AiDuoWorkflowsWorkflowID!) {
+  duoWorkflowWorkflows(workflowId: $workflowId) {
+    nodes {
+      id
+      noteLinks(first: 5) {
+        nodes {
+          linkType
+          note {
+            id
+            url
+            discussion {
+              id
+              noteable {
+                ... on Issue {
+                  id
+                  reference
+                }
+                ... on MergeRequest {
+                  id
+                  reference
+                }
+                ... on Epic {
+                  id
+                  reference
+                }
+              }
+            }
+          }
+        }
+      }
+      pipelineLinks(first: 5) {
+        nodes {
+          linkType
+          pipeline {
+            id
+            path
+          }
+        }
+      }
+    }
+  }
+}

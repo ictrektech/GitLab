@@ -1,0 +1,26 @@
+// SeverityMeter segment fills. No Tailwind utility maps to the status icon-colour
+// tokens, so the filled colours live here rather than inline; these are the
+// saturated status colours (theme-aware) that read clearly against the neutral
+// track. Loaded from the merge_request page bundle, the only place the meter
+// renders today; move this to a shared entrypoint if another page adopts it.
+
+// Empty (unfilled) segments. A plain neutral fill sits too close to the card
+// background in dark mode, so the track is outlined with a strong border to stay
+// visible in both themes.
+.severity-meter-track {
+  background-color: var(--gl-background-color-strong);
+  box-shadow: inset 0 0 0 1px var(--gl-border-color-strong);
+}
+
+.severity-meter-fill-low {
+  background-color: var(--gl-icon-color-success);
+}
+
+.severity-meter-fill-medium {
+  background-color: var(--gl-icon-color-warning);
+}
+
+.severity-meter-fill-high,
+.severity-meter-fill-critical {
+  background-color: var(--gl-icon-color-danger);
+}

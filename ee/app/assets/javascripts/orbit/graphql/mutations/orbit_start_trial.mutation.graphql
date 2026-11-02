@@ -1,0 +1,6 @@
+# @feature_category: knowledge_graph
+mutation orbitStartTrial($groupPath: ID!) {
+  orbitStartTrial(input: { groupPath: $groupPath }) {
+    errors
+  }
+}

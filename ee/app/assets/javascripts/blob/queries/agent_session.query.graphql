@@ -1,0 +1,41 @@
+# @feature_category: source_code_management
+#import "~/graphql_shared/fragments/user.fragment.graphql"
+
+# Looked up by ID, like the Duo panel does, so any session the user can read is
+# returned. `project.duoWorkflowWorkflows` only lists remote flows.
+query getAgentSession($workflowId: AiDuoWorkflowsWorkflowID!) {
+  duoWorkflowWorkflows(workflowId: $workflowId) {
+    nodes {
+      id
+      title
+      goal
+      status
+      humanStatus
+      workflowDefinition
+      updatedAt
+      user {
+        ...User
+      }
+      workItemLinks(first: 5) {
+        nodes {
+          linkType
+          workItem {
+            id
+            iid
+            webPath
+          }
+        }
+      }
+      mergeRequestLinks(first: 5) {
+        nodes {
+          linkType
+          mergeRequest {
+            id
+            iid
+            webPath
+          }
+        }
+      }
+    }
+  }
+}

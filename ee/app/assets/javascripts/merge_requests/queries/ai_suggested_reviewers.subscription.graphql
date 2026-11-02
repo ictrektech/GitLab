@@ -1,0 +1,15 @@
+# @feature_category: code_review_workflow
+#import "./ai_suggested_reviewer.fragment.graphql"
+
+subscription aiSuggestedReviewersUpdated($issuableId: IssuableID!) {
+  mergeRequestAiSuggestedReviewersUpdated(issuableId: $issuableId) {
+    ... on MergeRequest {
+      id
+      aiSuggestedReviewers {
+        nodes {
+          ...AiSuggestedReviewer
+        }
+      }
+    }
+  }
+}

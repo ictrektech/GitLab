@@ -1,0 +1,10 @@
+---
+name: ci_destroy_pipeline_artifacts_outside_transaction
+description: Destroys a pipeline's job artifacts before the pipeline destroy transaction instead of inside it.
+feature_issue_url:
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/262274
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635938
+milestone: '19.6'
+group: group::pipeline execution
+type: gitlab_com_derisk
+default_enabled: false

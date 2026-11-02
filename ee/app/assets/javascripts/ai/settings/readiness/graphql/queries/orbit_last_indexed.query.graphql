@@ -1,0 +1,12 @@
+# @feature_category: knowledge_graph
+
+query getOrbitLastIndexed($fullPath: ID!) {
+  project(fullPath: $fullPath) {
+    id
+    orbit {
+      indexing @gl_introduced(version: "19.4.0") {
+        lastCompletedAt @gl_introduced(version: "19.4.0")
+      }
+    }
+  }
+}

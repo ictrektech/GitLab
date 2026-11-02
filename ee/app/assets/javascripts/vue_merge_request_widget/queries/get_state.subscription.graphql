@@ -1,0 +1,31 @@
+# @feature_category: code_review_workflow
+#import "ee/vue_merge_request_widget/queries/states/merge_train_position.fragment.graphql"
+
+subscription getStateSubscriptionEE($issuableId: IssuableID!, $targetBranches: [String!]) {
+  mergeRequestMergeStatusUpdated(issuableId: $issuableId) {
+    ... on MergeRequest {
+      id
+      project {
+        id
+        archived
+        onlyAllowMergeIfPipelineSucceeds
+      }
+      detailedMergeStatus
+      commitCount
+      availableAutoMergeStrategies
+      autoMergeEnabled
+      mergeError
+      state
+      draft
+      userPermissions {
+        canMerge
+      }
+      mergeabilityChecks {
+        identifier
+        status
+      }
+
+      ...MergeTrainPosition
+    }
+  }
+}

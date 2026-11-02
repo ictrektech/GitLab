@@ -1,0 +1,14 @@
+# @feature_category: artifact_registry
+
+query getArtifactRegistryNamespaceStatistics($organizationId: OrganizationsOrganizationID!) {
+  organization(id: $organizationId) {
+    id
+    artifactRegistry {
+      id @gl_introduced(version: "19.5.0")
+      statistics @gl_introduced(version: "19.5.0") {
+        repositoriesCount
+        deduplicatedSizeBytes
+      }
+    }
+  }
+}

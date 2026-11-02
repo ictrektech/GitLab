@@ -1,0 +1,73 @@
+# @feature_category: duo_agent_platform
+
+query getAgentFlowLinkedItems($workflowId: AiDuoWorkflowsWorkflowID!) {
+  duoWorkflowWorkflows(workflowId: $workflowId) {
+    edges {
+      node {
+        id
+        workItemLinks(first: 100) {
+          nodes {
+            linkType
+            workItem {
+              id
+              reference
+              title
+              webPath
+              workItemType {
+                id
+                iconName
+              }
+            }
+          }
+        }
+        mergeRequestLinks(first: 100) {
+          nodes {
+            linkType
+            mergeRequest {
+              id
+              reference
+              title
+              webPath
+            }
+          }
+        }
+        pipelineLinks(first: 100) {
+          nodes {
+            linkType
+            pipeline {
+              id
+              name
+              path
+            }
+          }
+        }
+        noteLinks(first: 100) {
+          nodes {
+            linkType
+            note {
+              id
+              url
+              discussion {
+                id
+                noteable {
+                  ... on Issue {
+                    id
+                    reference
+                  }
+                  ... on MergeRequest {
+                    id
+                    reference
+                  }
+                  ... on Epic {
+                    id
+                    reference
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

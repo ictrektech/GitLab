@@ -1,0 +1,38 @@
+#import "./work_item_agent_plan.fragment.graphql"
+
+# @feature_category: team_planning
+
+# Kept out of WorkItemAgentPlanFragment, which the mutations and the subscription share,
+# because these fields resolve for only one work item per request.
+fragment WorkItemAgentPlanQuestions on WorkItemWidgetAgentPlan {
+  openQuestionsCount @gl_introduced(version: "19.5.0")
+  questions @gl_introduced(version: "19.5.0") {
+    nodes {
+      noteId
+      answered
+    }
+  }
+}
+
+query workItemAgentPlan(
+  $id: WorkItemID!
+  $useWorkItemFeatures: Boolean = false
+  $includeReadinessScore: Boolean = false
+) {
+  workItem(id: $id) {
+    id
+    iid
+    widgets @skip(if: $useWorkItemFeatures) {
+      ... on WorkItemWidgetAgentPlan {
+        ...WorkItemAgentPlanFragment
+        ...WorkItemAgentPlanQuestions
+      }
+    }
+    features @include(if: $useWorkItemFeatures) {
+      agentPlan {
+        ...WorkItemAgentPlanFragment
+        ...WorkItemAgentPlanQuestions
+      }
+    }
+  }
+}

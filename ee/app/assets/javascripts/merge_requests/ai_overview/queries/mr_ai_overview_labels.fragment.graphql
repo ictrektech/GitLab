@@ -1,0 +1,11 @@
+fragment MrAiOverviewLabels on MergeRequest {
+  id
+  labels {
+    nodes {
+      id
+      title
+      color
+      description
+    }
+  }
+}

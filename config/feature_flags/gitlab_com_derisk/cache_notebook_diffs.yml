@@ -1,0 +1,9 @@
+---
+name: cache_notebook_diffs
+description: Cache rendered notebook diffs, so repeated diff requests do not render the same notebooks again
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263925
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635151
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

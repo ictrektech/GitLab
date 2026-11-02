@@ -1,0 +1,10 @@
+---
+name: duo_workflow_omit_gitlab_token_from_dws_metadata
+description: Stop forwarding the user's GitLab token to Duo Workflow Service as gRPC metadata
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/637007
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265807
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/637007
+milestone: '19.6'
+group: group::agent foundations
+type: gitlab_com_derisk
+default_enabled: false

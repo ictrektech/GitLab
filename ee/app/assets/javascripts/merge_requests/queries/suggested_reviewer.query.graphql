@@ -1,0 +1,24 @@
+# @feature_category: code_review_workflow
+#import "./ai_suggested_reviewer.fragment.graphql"
+
+query suggestedReviewers($projectPath: ID!, $iid: String!) {
+  project(fullPath: $projectPath) {
+    id
+    mergeRequest(iid: $iid) {
+      id
+      createdAt
+      duoWorkflows {
+        nodes {
+          id
+          workflowDefinition
+          statusGroup
+        }
+      }
+      aiSuggestedReviewers {
+        nodes {
+          ...AiSuggestedReviewer
+        }
+      }
+    }
+  }
+}

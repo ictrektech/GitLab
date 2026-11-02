@@ -1,0 +1,47 @@
+# @feature_category: dap_triggers
+#import "~/graphql_shared/fragments/page_info.fragment.graphql"
+#import "../fragments/flow_trigger.fragment.graphql"
+
+query getAutomations(
+  $projectPath: ID!
+  $kind: AiFlowTriggerKind
+  $active: Boolean
+  $eventType: AiFlowTriggerEventType
+  $lastRunStatus: AiFlowTriggerLastRunStatus
+  $search: String
+  $sort: AiFlowTriggerSort
+  $first: Int
+  $last: Int
+  $after: String
+  $before: String
+) {
+  project(fullPath: $projectPath) {
+    id
+    aiFlowTriggers(
+      kind: $kind
+      active: $active
+      eventType: $eventType
+      lastRunStatus: $lastRunStatus
+      search: $search
+      sort: $sort
+      first: $first
+      last: $last
+      after: $after
+      before: $before
+    ) {
+      nodes {
+        ...FlowTriggerFragment
+        runningCount @gl_introduced(version: "19.6.0")
+        lastRun @gl_introduced(version: "19.6.0") {
+          status
+          startedAt
+          finishedAt
+          error
+        }
+      }
+      pageInfo {
+        ...PageInfo
+      }
+    }
+  }
+}

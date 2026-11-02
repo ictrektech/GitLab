@@ -1,0 +1,12 @@
+---
+name: dap_session_source_fetch_retry
+description: >-
+  Enables up to six source-fetch attempts for Duo Agent Platform session jobs,
+  with exponential backoff on supporting Runners, without retrying agent execution.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/627944
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/254152
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/628054
+milestone: '19.5'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

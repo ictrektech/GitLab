@@ -1,0 +1,8 @@
+# @feature_category: duo_agent_platform
+
+query getDuoGroupMcpServerNames($fullPath: ID!) {
+  group(fullPath: $fullPath) {
+    id
+    duoMcpServerNames @gl_introduced(version: "19.6.0")
+  }
+}

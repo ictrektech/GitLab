@@ -1,0 +1,16 @@
+# @feature_category: custom_dashboards_foundation
+
+#import "ee_else_ce/explore/analytics_dashboards/graphql/fragments/scope_group_permissions.fragment.graphql"
+
+# The default scope for a load that names none: the group the user visits most, `frecentGroups`
+# being ordered by frecency. `scopeToOrganization` drops groups from other organizations the
+# user has visited before the list is ranked.
+query getAnalyticsDashboardFrecentGroups {
+  frecentGroups(scopeToOrganization: true) {
+    id
+    name
+    fullName
+    fullPath
+    ...AnalyticsDashboardScopeGroupPermissions
+  }
+}

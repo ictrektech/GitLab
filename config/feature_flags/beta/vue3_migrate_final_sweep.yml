@@ -1,0 +1,10 @@
+---
+name: vue3_migrate_final_sweep
+description: Enables Vue 3 in compatibility mode for every page that was not migrated to Vue 3 with its own feature flag.
+feature_issue_url: https://gitlab.com/groups/gitlab-org/-/epics/23285
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/261154
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/633141
+milestone: '19.6'
+group: group::pipeline authoring
+type: beta
+default_enabled: false

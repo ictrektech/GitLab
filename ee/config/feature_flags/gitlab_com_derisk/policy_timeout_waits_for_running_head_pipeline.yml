@@ -1,0 +1,10 @@
+---
+name: policy_timeout_waits_for_running_head_pipeline
+description: Keep the approval policy evaluation timeout of another pipeline at the same SHA from skipping violations while the merge request's head pipeline is still running
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/633552
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263324
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634560
+milestone: '19.6'
+group: group::policy management
+type: gitlab_com_derisk
+default_enabled: false

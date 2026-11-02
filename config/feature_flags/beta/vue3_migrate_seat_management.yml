@@ -1,0 +1,10 @@
+---
+name: vue3_migrate_seat_management
+description: Enables Vue 3 in compatibility mode for the seat management page entrypoints
+feature_issue_url: https://gitlab.com/groups/gitlab-org/-/work_items/23285
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263131
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/633485
+milestone: '19.6'
+group: group::seat management
+type: beta
+default_enabled: false

@@ -1,0 +1,12 @@
+# @feature_category: portfolio_management
+query workItemEditMetadata($id: WorkItemID!) {
+  workItem(id: $id) {
+    id
+    widgets(onlyTypes: [ASSIGNEES]) {
+      ... on WorkItemWidgetAssignees {
+        type
+        allowsMultipleAssignees
+      }
+    }
+  }
+}

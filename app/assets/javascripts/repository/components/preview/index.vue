@@ -1,0 +1,147 @@
+<script>
+import { GlButton, GlIcon, GlLink } from '@gitlab/ui';
+import SafeHtml from '~/vue_shared/directives/safe_html';
+import { __, sprintf } from '~/locale';
+import { handleLocationHash, isLoggedIn } from '~/lib/utils/common_utils';
+import { renderGFM } from '~/behaviors/markdown/render_gfm';
+import { logError } from '~/lib/logger';
+import { captureException } from '~/sentry/sentry_browser_wrapper';
+import { getRefType } from '../../utils/ref_type';
+import getRefMixin from '../../mixins/get_ref';
+import projectPathQuery from '../../queries/project_path.query.graphql';
+import blobEditQuery from '../../queries/blob_edit.query.graphql';
+import readmeQuery from '../../queries/readme.query.graphql';
+
+export default {
+  name: 'PreviewIndex',
+  components: {
+    GlButton,
+    GlIcon,
+    GlLink,
+  },
+  directives: {
+    SafeHtml,
+  },
+  mixins: [getRefMixin],
+  apollo: {
+    readme: {
+      query: readmeQuery,
+      variables() {
+        return {
+          url: this.blob.webPath,
+        };
+      },
+    },
+    projectPath: {
+      query: projectPathQuery,
+    },
+    editBlob: {
+      query: blobEditQuery,
+      variables() {
+        return {
+          projectPath: this.projectPath,
+          filePath: this.blob.path,
+          ref: this.ref,
+          refType: getRefType(this.refType),
+        };
+      },
+      skip() {
+        return !isLoggedIn() || !this.projectPath || !this.ref || !this.blob.path;
+      },
+      update: (data) => data.project?.repository?.blobs?.nodes?.[0] ?? null,
+      error(error) {
+        logError(`Unexpected error while fetching editBlob query`, error);
+        captureException(error);
+      },
+    },
+  },
+  inject: {
+    refType: {
+      default: null,
+    },
+  },
+  props: {
+    blob: {
+      type: Object,
+      required: true,
+    },
+  },
+  emits: ['rendered'],
+  data() {
+    return {
+      readme: null,
+      projectPath: '',
+      editBlob: null,
+    };
+  },
+  computed: {
+    isLoading() {
+      return this.$apollo.queries.readme.loading;
+    },
+    editPath() {
+      return this.editBlob?.canModifyBlob ? this.editBlob.editBlobPath : null;
+    },
+    editButtonAriaLabel() {
+      return sprintf(__('Edit file %{fileName}'), { fileName: this.blob.name });
+    },
+  },
+  watch: {
+    readme(newVal) {
+      if (newVal) {
+        this.$nextTick(() => {
+          handleLocationHash();
+          renderGFM(this.$refs.readme);
+          this.$emit('rendered');
+        });
+      }
+    },
+  },
+  safeHtmlConfig: {
+    ADD_TAGS: ['copy-code'],
+  },
+  skeletonLineWidthClasses: ['gl-w-full', 'gl-w-full', 'gl-w-full', 'gl-w-full', 'gl-w-1/2'],
+};
+</script>
+
+<template>
+  <article class="file-holder limited-width-container readme-holder">
+    <div class="js-file-title file-title-flex-parent gl-py-3 gl-pl-4 gl-pr-3">
+      <div class="file-header-content">
+        <gl-icon name="markdown-mark-solid" />
+        <gl-link :href="blob.webPath">
+          <strong>{{ blob.name }}</strong>
+        </gl-link>
+      </div>
+      <gl-button
+        v-if="editPath"
+        category="tertiary"
+        size="small"
+        :href="editPath"
+        :aria-label="editButtonAriaLabel"
+        data-testid="edit-readme-button"
+      >
+        {{ __('Edit file') }}
+      </gl-button>
+    </div>
+    <div class="blob-viewer" data-testid="blob-viewer-content" itemprop="about">
+      <div
+        v-if="isLoading"
+        class="gl-flex gl-flex-col gl-gap-3 gl-p-5"
+        aria-hidden="true"
+        data-testid="readme-skeleton-loader"
+      >
+        <div
+          v-for="(widthClass, index) in $options.skeletonLineWidthClasses"
+          :key="index"
+          class="gl-animate-skeleton-loader gl-h-4 !gl-max-w-none gl-rounded-base"
+          :class="widthClass"
+        ></div>
+      </div>
+      <div
+        v-else-if="readme"
+        ref="readme"
+        v-safe-html:[$options.safeHtmlConfig]="readme.html"
+      ></div>
+    </div>
+  </article>
+</template>

@@ -1,0 +1,78 @@
+#import "./group_status_indexing.fragment.graphql"
+
+fragment OrbitGroupStatusGroups on GroupConnection {
+  nodes {
+    name
+    fullPath
+    webPath
+    avatarUrl
+    userPermissions {
+      readOrbitSetting
+      startOrbitTrial
+      updateKnowledgeGraphSetting
+    }
+    orbit {
+      access {
+        state
+        reason
+        turnOnDenialReason
+        trial {
+          state
+          expiresOn
+          credits {
+            remaining
+            total
+          }
+          offer {
+            durationDays
+            initialCredits
+          }
+        }
+      }
+    }
+    ...OrbitGroupStatusIndexing
+  }
+  pageInfo {
+    hasNextPage
+    hasPreviousPage
+    startCursor
+    endCursor
+  }
+}
+
+# @feature_category: knowledge_graph
+query getOrbitGroupStatusGroups(
+  $listAllGroups: Boolean = false
+  $enabled: Boolean = false
+  $search: String
+  $first: Int
+  $last: Int
+  $after: String
+  $before: String
+) {
+  orbit @gl_introduced(version: "19.4.0") {
+    allGroups: groups(
+      topLevelOnly: true
+      allAvailable: true
+      enabled: $enabled
+      search: $search
+      first: $first
+      last: $last
+      after: $after
+      before: $before
+      sort: "name_asc"
+    ) @include(if: $listAllGroups) {
+      ...OrbitGroupStatusGroups
+    }
+    memberGroups(
+      enabled: $enabled
+      search: $search
+      first: $first
+      last: $last
+      after: $after
+      before: $before
+    ) @skip(if: $listAllGroups) @gl_introduced(version: "19.4.0") {
+      ...OrbitGroupStatusGroups
+    }
+  }
+}

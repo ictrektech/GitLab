@@ -1,0 +1,20 @@
+#import "./mr_ai_overview_discussion.fragment.graphql"
+
+# @feature_category: code_review_workflow
+query mrAiOverviewDiscussions($projectPath: ID!, $iid: String!, $after: String) {
+  project(fullPath: $projectPath) {
+    id
+    mergeRequest(iid: $iid) {
+      id
+      discussionsWithActivity(filter: ONLY_COMMENTS, first: 50, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          ...MrAiOverviewDiscussion
+        }
+      }
+    }
+  }
+}

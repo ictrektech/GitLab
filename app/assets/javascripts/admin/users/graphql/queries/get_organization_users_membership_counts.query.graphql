@@ -1,0 +1,13 @@
+# @feature_category: organization
+query getOrganizationUsersMembershipCountsQuery(
+  $usernames: [String!]
+  $organizationId: OrganizationsOrganizationID!
+) {
+  users(usernames: $usernames) {
+    nodes {
+      id
+      groupCount(organizationId: $organizationId)
+      projectCount(organizationId: $organizationId)
+    }
+  }
+}

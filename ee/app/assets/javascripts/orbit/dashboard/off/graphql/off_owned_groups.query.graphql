@@ -1,0 +1,34 @@
+# @feature_category: knowledge_graph
+query getOrbitOffOwnedGroups($first: Int!) {
+  orbit @gl_introduced(version: "19.4.0") {
+    groups(topLevelOnly: true, ownedOnly: true, first: $first, sort: "name_asc") {
+      pageInfo {
+        hasNextPage
+      }
+      nodes {
+        id
+        name
+        fullPath
+        avatarUrl
+        userPermissions {
+          startOrbitTrial
+        }
+        orbit {
+          access {
+            state
+            reason
+            turnOnDenialReason
+            trial {
+              state
+              expiresOn
+              offer {
+                durationDays
+                initialCredits
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

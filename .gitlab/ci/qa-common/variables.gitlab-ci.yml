@@ -1,0 +1,30 @@
+# Default variables for e2e test pipelines
+
+variables:
+  GIT_DEPTH: "20"
+  GIT_STRATEGY: "clone"  # 'GIT_STRATEGY: clone' optimizes the pack-objects cache hit ratio
+  GIT_SUBMODULE_STRATEGY: "none"
+  REGISTRY_HOST: "registry.gitlab.com"
+  REGISTRY_GROUP: "gitlab-org"
+  ALLURE_JOB_NAME: $CI_PROJECT_NAME
+  COLORIZED_LOGS: "true"
+  QA_LOG_LEVEL: "info"
+  # Used by gitlab-qa to set up a volume for `${CI_PROJECT_DIR}/qa/rspec:/home/gitlab/qa/rspec/`
+  QA_RSPEC_REPORT_PATH: "${CI_PROJECT_DIR}/qa/rspec"
+  QA_OMNIBUS_MR_TESTS: "only-smoke"
+  # Retry failed specs in separate process
+  QA_RETRY_FAILED_SPECS: "true"
+  # Helm chart ref used by test-on-cng pipeline
+  GITLAB_HELM_CHART_REF: "0e3f8af51b8b15cef5790352139c7c0714531524"
+  # Specific ref for cng-mirror project to trigger builds for
+  GITLAB_CNG_MIRROR_REF: "55409ac0ac942a8da07153a7742dbe33d1f09aee"
+  CAPRONI_VERSION: "4.37.1"
+  K3D_VERSION: "v5.9.0"
+  # Makes sure some of the common scripts from pipeline-common use bundler to execute commands
+  RUN_WITH_BUNDLE: "true"
+  # Makes sure reporting script defined in .gitlab-qa-report from pipeline-common is executed from correct folder
+  QA_PATH: "qa"
+  MAX_E2E_TEST_EXECUTION_TIME: 45m
+  # Pinned runner image used by QA tests that spin up Docker runners.
+  # Upgrade via MR to validate compatibility before it reaches master.
+  QA_RUNNER_CONTAINER_IMAGE: "gitlab-runner:alpine-v19.5.2"

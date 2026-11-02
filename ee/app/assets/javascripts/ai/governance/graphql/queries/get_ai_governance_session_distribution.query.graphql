@@ -1,0 +1,37 @@
+# @feature_category: compliance_management
+query getAiGovernanceSessionDistribution(
+  $groupFullPath: ID!
+  $projectFullPath: ID!
+  $isProject: Boolean = false
+  $timeframe: AiGovernanceMetricsTimeframe
+  $agentClass: AiGovernanceAgentClass
+) {
+  group(fullPath: $groupFullPath) @skip(if: $isProject) {
+    id
+    aiGovernanceMetrics(timeframe: $timeframe, agentClass: $agentClass) {
+      sessionDistribution {
+        totalSessions
+        totalDevelopers
+        slices {
+          name
+          sessions
+          developers
+        }
+      }
+    }
+  }
+  project(fullPath: $projectFullPath) @include(if: $isProject) {
+    id
+    aiGovernanceMetrics(timeframe: $timeframe, agentClass: $agentClass) {
+      sessionDistribution {
+        totalSessions
+        totalDevelopers
+        slices {
+          name
+          sessions
+          developers
+        }
+      }
+    }
+  }
+}

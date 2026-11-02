@@ -1,0 +1,11 @@
+---
+name: defer_member_grant_authorization_refresh
+description: Refresh project_authorizations at medium priority for membership changes
+  that only grant access, for users whose project access resolves from memberships
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/632453
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/265683
+rollout_issue_url:
+milestone: '19.6'
+group: group::authorization
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,30 @@
+.dashboard .side .card .card-header .input-group {
+  .form-control {
+    height: 42px;
+  }
+}
+
+.groups-list {
+  @include basic-list;
+}
+
+.group-root-path {
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-wrap: nowrap;
+}
+
+.group-row {
+  .description p {
+    margin-bottom: 0;
+    @apply gl-text-subtle;
+    @apply gl-line-clamp-2;
+  }
+}
+
+.save-group-loader {
+  margin-top: $gl-spacing-scale-9;
+  margin-bottom: $gl-spacing-scale-9;
+  @apply gl-text-subtle;
+}

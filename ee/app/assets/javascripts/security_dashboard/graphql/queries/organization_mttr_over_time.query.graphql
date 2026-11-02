@@ -1,0 +1,39 @@
+# @feature_category: vulnerability_management
+query organizationMttrOverTime(
+  $projectId: [ID!]
+  $reportType: [VulnerabilityReportType!]
+  $startDate: ISO8601Date!
+  $endDate: ISO8601Date!
+  $includeBySeverity: Boolean!
+  $includeByReportType: Boolean!
+  $severity: [VulnerabilitySeverity!]
+) {
+  namespace: organization {
+    id
+    securityMetrics(projectId: $projectId, reportType: $reportType) {
+      mttrOverTime(startDate: $startDate, endDate: $endDate, severity: $severity) {
+        startDate
+        endDate
+        sumDays
+        count
+        mttr
+        ... @include(if: $includeBySeverity) {
+          bySeverity {
+            severity
+            sumDays
+            count
+            mttr
+          }
+        }
+        ... @include(if: $includeByReportType) {
+          byReportType {
+            reportType
+            sumDays
+            count
+            mttr
+          }
+        }
+      }
+    }
+  }
+}

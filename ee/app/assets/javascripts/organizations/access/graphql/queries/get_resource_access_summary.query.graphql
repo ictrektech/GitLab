@@ -1,0 +1,30 @@
+# @feature_category: organization
+query getOrganizationAccessResourceSummary(
+  $resourceId: String!
+  $ownerRole: ArtifactRegistryRole!
+  $maxOwners: Int!
+) {
+  artifactRegistryRoleAssignmentCounts(resourceId: $resourceId) @client {
+    total
+    byRole {
+      role
+      count
+    }
+  }
+  artifactRegistryRoleAssignments(
+    resourceIds: [$resourceId]
+    roles: [$ownerRole]
+    first: $maxOwners
+  ) @client {
+    nodes {
+      resourceId
+      role
+      assignee {
+        id
+        name
+        username
+        webPath
+      }
+    }
+  }
+}

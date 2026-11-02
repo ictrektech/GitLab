@@ -1,0 +1,11 @@
+---
+name: third_party_agent_token_model_allowlist
+description: Add the namespace model allowlist claim to third-party agent tokens,
+  so the AI gateway proxy enforces it.
+feature_issue_url: https://gitlab.com/gitlab-com/request-for-help/-/work_items/5452
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/259163
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/632588
+milestone: '19.5'
+group: group::ai catalog
+type: gitlab_com_derisk
+default_enabled: false

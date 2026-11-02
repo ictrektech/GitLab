@@ -1,0 +1,9 @@
+---
+name: stop_notebook_text_diff_at_timeout
+description: Compute the notebook text diff inside the render timeout, and kill its diff process at the limit
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263933
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635151
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

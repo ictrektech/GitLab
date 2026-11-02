@@ -1,0 +1,14 @@
+#import "./mr_ai_overview_discussion.fragment.graphql"
+
+# @feature_category: code_review_workflow
+mutation mrAiOverviewCreateNote($input: CreateNoteInput!) {
+  createNote(input: $input) {
+    note {
+      id
+      discussion {
+        ...MrAiOverviewDiscussion
+      }
+    }
+    errors
+  }
+}

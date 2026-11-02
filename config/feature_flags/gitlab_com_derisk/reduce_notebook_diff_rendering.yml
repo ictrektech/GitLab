@@ -1,0 +1,9 @@
+---
+name: reduce_notebook_diff_rendering
+description: Skip rendering notebook diffs where the diff response does not use them
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263894
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635109
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,10 @@
+---
+name: duo_workflow_reject_invalid_client_events
+description: 'Lets Workhorse close a Duo Workflow WebSocket that sends an event not valid in the current state of the run'
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636576
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/266363
+rollout_issue_url:
+milestone: '19.6'
+group: group::ai core infra
+type: gitlab_com_derisk
+default_enabled: false

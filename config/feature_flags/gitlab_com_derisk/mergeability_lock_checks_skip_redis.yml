@@ -1,0 +1,11 @@
+---
+name: mergeability_lock_checks_skip_redis
+description: Answer path and LFS lock mergeability checks without Redis when the check
+  is inactive or the project has no locks
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631601
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/266187
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/634664
+milestone: '19.6'
+group: group::code review
+type: gitlab_com_derisk
+default_enabled: false

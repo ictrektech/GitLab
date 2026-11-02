@@ -1,0 +1,33 @@
+# @feature_category: knowledge_graph
+query getOrbitGroupSettings($fullPath: ID!) {
+  group(fullPath: $fullPath) {
+    id
+    name
+    fullPath
+    userPermissions {
+      startOrbitTrial
+    }
+    orbit {
+      enabled @gl_introduced(version: "19.4.0")
+      enabledAt
+      access @gl_introduced(version: "19.4.0") {
+        state
+        reason
+        turnOnDenialReason
+        trial {
+          expiresOn
+          credits {
+            total
+          }
+          offer {
+            durationDays
+            initialCredits
+          }
+        }
+      }
+      indexing @gl_introduced(version: "19.4.0") {
+        state
+      }
+    }
+  }
+}

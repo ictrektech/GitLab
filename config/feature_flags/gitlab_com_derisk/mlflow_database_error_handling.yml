@@ -1,0 +1,10 @@
+---
+name: mlflow_database_error_handling
+description: Report MLflow API database errors to error tracking and stop returning PostgreSQL messages
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635049
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263957
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/issues/635186
+milestone: '19.6'
+group: group::mlops
+type: gitlab_com_derisk
+default_enabled: false

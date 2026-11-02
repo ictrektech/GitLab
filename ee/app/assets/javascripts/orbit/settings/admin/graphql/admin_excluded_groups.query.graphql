@@ -1,0 +1,16 @@
+#import "./admin_group.fragment.graphql"
+
+# @feature_category: knowledge_graph
+query getOrbitAdminExcludedGroups($first: Int!, $after: String) {
+  orbit @gl_introduced(version: "19.4.0") {
+    excludedGroups(first: $first, after: $after) {
+      nodes {
+        ...OrbitAdminGroup
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}

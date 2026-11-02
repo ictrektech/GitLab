@@ -1,0 +1,17 @@
+# @feature_category: artifact_registry
+
+query getArtifactRegistryRepositoryPermissions(
+  $organizationId: OrganizationsOrganizationID!
+  $name: String!
+) {
+  organization(id: $organizationId) {
+    id
+    artifactRegistryRepository(name: $name) {
+      id @gl_introduced(version: "19.5.0")
+      name
+      userPermissions {
+        deleteArtifact
+      }
+    }
+  }
+}

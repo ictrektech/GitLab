@@ -1,0 +1,8 @@
+ai-harness-doctor:
+  stage: lint
+  extends:
+    - .default-retry
+    - .ai-harness:rules:doctor
+  needs: []
+  script:
+    - scripts/ai_harness/doctor

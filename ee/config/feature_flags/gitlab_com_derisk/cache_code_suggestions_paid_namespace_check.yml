@@ -1,0 +1,10 @@
+---
+name: cache_code_suggestions_paid_namespace_check
+description: Keep the result of the paid-namespace check on the code suggestions direct access route in the cache for 10 minutes per user instead of recomputing it on every call
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635651
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/264508
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635652
+milestone: '19.6'
+group: group::dap repository flows
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,12 @@
+# Methods of EE::Organizations::Organization that existed before Gitlab/OmniscientClassMethods.
+# Move them to the bounded context where they belong and remove them from this
+# list. Do not add new methods. Class methods have a `self.` prefix.
+# See https://docs.gitlab.com/development/software_design/#taming-omniscient-classes
+---
+EE::Organizations::Organization:
+- artifact_registry_activated?
+- artifact_registry_resolved_slug
+- foundational_agents_default_enabled
+- policy_store_experiment_active?
+- policy_store_experiment_available?
+- policy_store_experiment_enabled?

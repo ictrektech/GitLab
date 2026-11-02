@@ -1,0 +1,30 @@
+# @feature_category: custom_dashboards_foundation
+
+query getGroupOrProjectEE($fullPath: ID!) {
+  group(fullPath: $fullPath) {
+    id
+    name
+    fullName
+    webUrl
+    avatarUrl
+    visibility
+    userPermissions {
+      readDora4Analytics @gl_introduced(version: "19.5.0")
+      readCycleAnalytics @gl_introduced(version: "19.5.0")
+      readSecurityResource @gl_introduced(version: "19.5.0")
+    }
+  }
+  project(fullPath: $fullPath) {
+    id
+    name
+    fullName: nameWithNamespace
+    webUrl
+    avatarUrl
+    visibility
+    userPermissions {
+      readDora4Analytics @gl_introduced(version: "19.5.0")
+      readCycleAnalytics
+      readSecurityResource @gl_introduced(version: "19.5.0")
+    }
+  }
+}

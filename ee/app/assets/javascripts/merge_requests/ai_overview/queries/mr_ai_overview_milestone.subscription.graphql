@@ -1,0 +1,10 @@
+#import "./mr_ai_overview_milestone.fragment.graphql"
+
+# @feature_category: code_review_workflow
+subscription mrAiOverviewMilestone($issuableId: IssuableID!) {
+  issuableMilestoneUpdated(issuableId: $issuableId) {
+    ... on MergeRequest {
+      ...MrAiOverviewMilestone
+    }
+  }
+}

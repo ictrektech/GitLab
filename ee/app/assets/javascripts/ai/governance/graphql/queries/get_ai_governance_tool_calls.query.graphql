@@ -1,0 +1,33 @@
+# @feature_category: compliance_management
+query getAiGovernanceToolCalls(
+  $groupFullPath: ID!
+  $projectFullPath: ID!
+  $isProject: Boolean = false
+  $timeframe: AiGovernanceMetricsTimeframe
+  $agentClass: AiGovernanceAgentClass
+) {
+  group(fullPath: $groupFullPath) @skip(if: $isProject) {
+    id
+    aiGovernanceToolCalls(timeframe: $timeframe, agentClass: $agentClass) {
+      nodes {
+        toolName
+        title
+        actionType
+        count
+      }
+      approximate
+    }
+  }
+  project(fullPath: $projectFullPath) @include(if: $isProject) {
+    id
+    aiGovernanceToolCalls(timeframe: $timeframe, agentClass: $agentClass) {
+      nodes {
+        toolName
+        title
+        actionType
+        count
+      }
+      approximate
+    }
+  }
+}

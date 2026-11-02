@@ -1,0 +1,11 @@
+---
+name: dependency_management_workload_ref_refresh
+description: Run the dependency management auto-remediation workload on a hidden workload
+  ref
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/632419
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/261586
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/633463
+milestone: '19.6'
+group: group::code security
+type: gitlab_com_derisk
+default_enabled: false

@@ -1,0 +1,20 @@
+fragment MrAiOverviewFields on MergeRequest {
+  id
+  state
+  conflicts
+  approvalsRequired: groupedApprovalsRequired
+  approvalsLeft: groupedApprovalsLeft
+  resolvableDiscussionsCount
+  resolvedDiscussionsCount
+  mergeabilityChecks {
+    identifier
+    status
+  }
+  headPipeline {
+    id
+    detailedStatus {
+      id
+      text
+    }
+  }
+}

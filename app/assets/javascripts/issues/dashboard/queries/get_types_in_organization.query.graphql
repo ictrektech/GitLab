@@ -1,0 +1,14 @@
+# @feature_category: team_planning
+query getTypesInOrganization {
+  organization {
+    id
+    workItemTypes {
+      nodes {
+        id
+        iconName
+        isFilterableListView
+        name
+      }
+    }
+  }
+}

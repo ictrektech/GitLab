@@ -1,0 +1,16 @@
+# @feature_category: dap_triggers
+
+mutation updateAiFlowTrigger($input: AiFlowTriggerUpdateInput!) {
+  aiFlowTriggerUpdate(input: $input) {
+    aiFlowTrigger {
+      id
+      active
+      eventTypes
+      filter
+      goals
+      statusOnFinish
+      readyMergeRequestsOnFinish
+    }
+    errors
+  }
+}

@@ -1,0 +1,9 @@
+# @feature_category: code_review_workflow
+subscription blockingMergeRequestsStatusSubscription($issuableId: IssuableID!) {
+  mergeRequestMergeStatusUpdated(issuableId: $issuableId) {
+    ... on MergeRequest {
+      id
+      detailedMergeStatus
+    }
+  }
+}

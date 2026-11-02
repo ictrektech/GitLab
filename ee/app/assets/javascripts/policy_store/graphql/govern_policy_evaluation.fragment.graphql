@@ -1,0 +1,19 @@
+fragment GovernPolicyEvaluation on GovernPolicyEvaluation {
+  id
+  triggerType
+  mode
+  verdict
+  evaluatedAt
+  # projectId is what separates "ran for no project" from "ran for a project you
+  # cannot see": both null the project, and only the first means org-wide scope.
+  projectId
+  project {
+    id
+    nameWithNamespace
+    webPath
+  }
+  violations {
+    id
+    details
+  }
+}

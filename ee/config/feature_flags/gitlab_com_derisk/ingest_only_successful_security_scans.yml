@@ -1,0 +1,10 @@
+---
+name: ingest_only_successful_security_scans
+description: Ingests only security scans whose findings were stored, so failed or still-preparing scans do not mark vulnerabilities as no longer detected
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635067
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263841
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/636047
+milestone: '19.6'
+group: group::vulnerability management
+type: gitlab_com_derisk
+default_enabled: false

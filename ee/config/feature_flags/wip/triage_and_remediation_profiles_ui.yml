@@ -1,0 +1,11 @@
+---
+name: triage_and_remediation_profiles_ui
+description: Show triage and remediation presets alongside scan profiles on the security
+  configuration and inventory pages.
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631414
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/258623
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/631416
+milestone: '19.6'
+group: group::security controls
+type: wip
+default_enabled: false

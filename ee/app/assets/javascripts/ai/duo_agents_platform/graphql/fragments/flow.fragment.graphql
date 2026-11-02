@@ -1,0 +1,46 @@
+#import "~/graphql_shared/fragments/user.fragment.graphql"
+
+fragment FlowFragment on DuoWorkflow {
+  id
+  title
+  status
+  humanStatus
+  updatedAt
+  workflowDefinition
+  modelMetadataName
+  modelMetadataIdentifier
+  flowMetadataVersion
+  sourceType
+  sourceLink
+  user {
+    ...User
+  }
+  workItem {
+    id
+    iid
+    title
+    webPath
+  }
+  mergeRequest {
+    id
+    iid
+    title
+    webPath
+  }
+  userPermissions {
+    updateDuoWorkflow
+    resumeDuoWorkflow
+    restartDuoWorkflow @gl_introduced(version: "19.5.0")
+  }
+  project {
+    id
+    name
+    webPath
+    fullPath
+    namespace {
+      id
+      name
+      webPath
+    }
+  }
+}

@@ -1,0 +1,10 @@
+---
+name: limit_duo_workflow_link_fields
+description: Limits DuoWorkflow link fields to one resolution per GraphQL request
+feature_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635068
+introduced_by_url: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/263972
+rollout_issue_url: https://gitlab.com/gitlab-org/gitlab/-/work_items/635293
+milestone: '19.6'
+group: group::agent execution
+type: gitlab_com_derisk
+default_enabled: false

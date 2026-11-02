@@ -1,0 +1,19 @@
+# @feature_category: security_policy_management
+
+#import "./govern_policy_evaluation.fragment.graphql"
+
+# policyId and first are optional on the field. Requiring them here turns a caller
+# that forgets to scope the read into a query error rather than a silent read of
+# every policy's evaluations.
+query getGroupPolicyEvaluations($fullPath: ID!, $policyId: Int!, $first: Int!) {
+  group(fullPath: $fullPath) {
+    id
+    policyStore {
+      policyEvaluations(policyId: $policyId, first: $first) {
+        nodes {
+          ...GovernPolicyEvaluation
+        }
+      }
+    }
+  }
+}
