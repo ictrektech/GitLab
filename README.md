@@ -238,3 +238,6 @@ account lookup and creation, preventing duplicate first-login provisioning.
 Each login flow has its own five-minute challenge, bound to the native session CSRF
 token and atomically consumed in Redis. Parallel flows cannot overwrite a shared session
 state slot. Native CSRF validation and one-use replay rejection remain enabled.
+
+Re-entering with the same mapped identity preserves the existing native session.
+Only switching to a different identity signs out the previous GitLab account.

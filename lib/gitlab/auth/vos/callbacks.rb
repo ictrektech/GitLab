@@ -8,8 +8,10 @@ module Gitlab
 
         # Switching VOS users must never link the new identity to the previous session's account.
         def vos
-          sign_out(current_user) if current_user
           in_lock("vos:identity:#{oauth.fetch('uid')}", ttl: 30, retries: 50, sleep_sec: 0.1) do
+            if current_user && !::Identity.with_extern_uid('vos', oauth.fetch('uid')).exists?(user_id: current_user.id)
+              sign_out(current_user)
+            end
             sign_in_user_flow(Gitlab::Auth::Vos::User)
           end
         rescue Gitlab::ExclusiveLeaseHelpers::FailedToObtainLockError
