@@ -28,4 +28,4 @@ Git 命令行使用 GitLab 个人访问令牌或 SSH 密钥，网页单点登录
 
 若已安装 0.0.2，升级前须停机：Data 选择原来的 `<GITLAB_STORAGE_PATH>/gitlab/data`，并将原 `gitlab/config`、`gitlab/logs` 移至 VOS 应用存储的 `config`、`logs` 目录。不会自动迁移旧文件，须保留数据库密码和加密密钥。
 
-外部 HTTPS 地址为安装时的必填项，不再使用空默认值；229 设备填写 `https://192.168.1.229:1180/app/com.ictrek.gitlab`。已有空配置的安装可在升级时补填，无需重建数据目录或数据库。
+外部 HTTPS 地址为安装时的必填项，不再使用空默认值；须填写实际设备地址，例如 `https://vos.example.com:1180/app/com.ictrek.gitlab`。已有空配置的安装可在升级时补填，无需重建数据目录或数据库。
