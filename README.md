@@ -62,11 +62,18 @@ The sheet names identify the existing release-table locations. Neither profile u
 Runner is independent of the GitLab server. GPU jobs require GPU configuration on the Runner host,
 not on this application container. Runner is not installed or granted the Docker socket by this package.
 
-`GITLAB_STORAGE_PATH` is a `type: path` configuration with hint `com.ictrek.gitlab.storage`.
-Select a NAS public directory or host path as with Model Hub. The `gitlab/config`, `gitlab/data`,
-and `gitlab/logs` subdirectories retain repositories, local application state, configuration,
-and encryption keys. PostgreSQL data remains in PGV's managed storage.
-Stop GitLab before moving these directories and preserve their ownership and permissions.
+`GITLAB_DATA_PATH` is the only `type: path` configuration, with hint
+`com.ictrek.gitlab.storage`. Select a NAS public directory or host path as with Model Hub.
+It maps directly to `/var/opt/gitlab` for repositories, uploads, and local application data.
+Configuration and encryption keys use `${VOS_APP_STORAGE_PATH}/config`; logs use
+`${VOS_APP_STORAGE_PATH}/logs`. PostgreSQL data remains in PGV's managed storage.
+Back up configuration and keys together with Data and the PostgreSQL database.
+Stop GitLab before moving files and preserve ownership and permissions.
+
+If version 0.0.2 was already installed, stop it before upgrading. Set Data to the previous
+`<GITLAB_STORAGE_PATH>/gitlab/data`, and move the previous `gitlab/config` and `gitlab/logs`
+into the VOS application storage's `config` and `logs` directories. This package does not
+move existing files automatically; retain the saved database credential and encryption keys.
 The icon uses the original upstream `app/assets/images/logo.svg` on a transparent 1024-pixel square.
 
 Build on an architecture-matched host after syncing the local checkout with `rsync`:
@@ -86,7 +93,7 @@ and the required `amcheck`, `btree_gist`, `pg_trgm`, and `plpgsql` extensions.
 It validates PostgreSQL 17/18 and database ownership and never grants GitLab superuser privileges.
 Only this initializer receives the VOS PGV administrator credential.
 The application receives only its dedicated password through the protected configuration mount.
-That password is generated once and retained in `gitlab/config/vos-db-password` with mode `0600`.
+That password is generated once and retained in `${VOS_APP_STORAGE_PATH}/config/vos-db-password` with mode `0600`.
 Keep that file with the GitLab configuration backup. Existing roles without their saved credential
 or databases owned by another role cause initialization to fail instead of being overwritten.
 Existing bundled PostgreSQL data requires an explicit migration before switching to this image.

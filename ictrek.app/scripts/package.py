@@ -8,6 +8,8 @@ import subprocess
 import tarfile
 import tempfile
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -47,12 +49,23 @@ def main():
         subprocess.run(['python3', str(ROOT / 'ictrek.app/scripts/resolve_dependencies.py'),
                         str(stage / 'manifest.yml'), '--repositories',
                         str(ROOT / 'ictrek.app/dependencies.json')], check=True)
+        configs = yaml.safe_load((stage / 'configs.yml').read_text())['configs']
+        for item in configs:
+            for field in ('title', 'description'):
+                value = item[field]
+                if not isinstance(value, str) and (not isinstance(value, dict) or
+                        not value or not all(isinstance(text, str) for text in value.values())):
+                    raise SystemExit(f"Invalid localized {field} in {item['name']}")
+        paths = [item['name'] for item in configs if item['type'] == 'path']
+        if paths != ['GITLAB_DATA_PATH']:
+            raise SystemExit('Only the Data directory should have a user-selectable path')
         compose = (stage / 'docker-compose.yml').read_text()
         if 'runtime:' in compose or 'nvidia' in compose:
             raise SystemExit('GitLab CPU profiles must not require NVIDIA runtime')
         for profile in ('amd', 'arm'):
             validation_env = {**os.environ, 'GITLAB_EXTERNAL_URL': 'https://vos.example.com:1180/app/com.ictrek.gitlab',
-                              'GITLAB_STORAGE_PATH': '/data/gitlab-package-check',
+                              'GITLAB_DATA_PATH': '/data/gitlab-package-check/data',
+                              'VOS_APP_STORAGE_PATH': '/data/gitlab-package-check/managed',
                               'VOS_POSTGRES_PASSWORD': 'package-validation-placeholder'}
             subprocess.run(['docker', 'compose', '-f', str(stage / 'docker-compose.yml'),
                             '--profile', profile, 'config', '--quiet'], env=validation_env, check=True)

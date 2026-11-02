@@ -11,9 +11,9 @@ x-gitlab: &gitlab
     - '127.0.0.1:${GITLAB_HTTP_PORT:-25880}:80'
     - '${GITLAB_SSH_PORT:-2424}:22'
   volumes:
-    - ${GITLAB_STORAGE_PATH}/gitlab/config:/etc/gitlab
-    - ${GITLAB_STORAGE_PATH}/gitlab/data:/var/opt/gitlab
-    - ${GITLAB_STORAGE_PATH}/gitlab/logs:/var/log/gitlab
+    - ${VOS_APP_STORAGE_PATH}/config:/etc/gitlab
+    - ${GITLAB_DATA_PATH}:/var/opt/gitlab
+    - ${VOS_APP_STORAGE_PATH}/logs:/var/log/gitlab
   networks:
     vos_default:
       aliases: [gitlab, ictrek-gitlab]
@@ -42,7 +42,7 @@ x-pgv-init: &pgv-init
     GITLAB_DB_HOST: pgv
     VOS_POSTGRES_PASSWORD: ${VOS_POSTGRES_PASSWORD:?VOS_POSTGRES_PASSWORD is required}
   volumes:
-    - ${GITLAB_STORAGE_PATH}/gitlab/config:/etc/gitlab
+    - ${VOS_APP_STORAGE_PATH}/config:/etc/gitlab
   networks: [vos_default]
 services:
   gitlab-pgv-amd:

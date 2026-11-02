@@ -1,11 +1,11 @@
 configs:
-  - name: GITLAB_STORAGE_PATH
+  - name: GITLAB_DATA_PATH
     type: path
-    title: {zh-CN: GitLab 数据目录, en: GitLab data directory}
+    title: {zh-CN: Data 映射目录, en: Data mapping directory}
     description:
-      zh-CN: 选择 NAS 公共目录或宿主机路径。GitLab 在其 gitlab 子目录中保存仓库、上传文件、配置及密钥；PostgreSQL 数据保存在 PGV 中。不要让其他应用直接修改这些文件；迁移须完整备份并停机操作。
-      en: Select a NAS public directory or host path. GitLab stores repositories, uploads, configuration, and keys in its gitlab subdirectory; PostgreSQL data remains in PGV. Keep other applications from modifying these files. Migrate with a complete backup while stopped.
-    default: /data/vos_workspace/gitlab
+      zh-CN: 选择 NAS 公共目录或宿主机路径。此目录直接映射到容器 /var/opt/gitlab，保存仓库、上传文件等应用数据。配置和日志保存在 VOS 应用存储中；PostgreSQL 数据保存在 PGV 中。不要让其他应用直接修改这些文件；迁移须完整备份并停机操作。
+      en: Select a NAS public directory or host path. This directory maps directly to /var/opt/gitlab for repositories, uploads, and application data. Configuration and logs remain in VOS app storage; PostgreSQL data remains in PGV. Keep other applications from modifying these files. Migrate with a complete backup while stopped.
+    default: /data/vos_workspace/gitlab/data
     hints: [com.ictrek.gitlab.storage]
   - name: GITLAB_EXTERNAL_URL
     type: string
@@ -17,7 +17,9 @@ configs:
   - name: GITLAB_SSH_PORT
     type: integer
     title: {zh-CN: Git SSH 端口, en: Git SSH port}
-    description: {zh-CN: Git 仓库的 SSH 端口，须避开宿主机 SSH 及其他服务。, en: Git SSH port, distinct from host SSH and other services.}
+    description:
+      zh-CN: Git 仓库的 SSH 端口，须避开宿主机 SSH 及其他服务。
+      en: Git SSH port, distinct from host SSH and other services.
     default: 2424
     minimum: 1024
     maximum: 65535
