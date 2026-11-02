@@ -246,3 +246,6 @@ The VOS entry keeps a small integration frame alive across native GitLab navigat
 It reads the initial VOS locale and listens for `locale-change`, updates the signed-in
 user through GitLab’s native CSRF-protected preferences endpoint, and reloads content
 only when the language changes. Chinese and English follow VOS; login and accounts remain native.
+
+Navigation exposes one root page, Code collaboration, directly under the VOS-provided
+GitLab application group. Packaging rejects a duplicate application-name group.

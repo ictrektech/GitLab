@@ -13,6 +13,15 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def validate_routers(text):
+    routes = yaml.safe_load(text).get('routers', [])
+    if len(routes) != 1 or routes[0].get('kind') != 'page' or routes[0].get('id') != 'gitlab' or routes[0].get('children'):
+        raise ValueError('GitLab must expose one root page under the VOS application wrapper')
+    page = routes[0]
+    if page.get('iframe-src') != '/app/com.ictrek.gitlab/-/vos/app' or not page.get('entry-point') or not page.get('embed'):
+        raise ValueError('The GitLab page must open the VOS integration shell')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--images-env', type=Path, help='Use a previously resolved Feishu .env file')
@@ -49,6 +58,7 @@ def main():
         subprocess.run(['python3', str(ROOT / 'ictrek.app/scripts/resolve_dependencies.py'),
                         str(stage / 'manifest.yml'), '--repositories',
                         str(ROOT / 'ictrek.app/dependencies.json')], check=True)
+        validate_routers((stage / 'routers.yml').read_text())
         configs = yaml.safe_load((stage / 'configs.yml').read_text())['configs']
         for item in configs:
             for field in ('title', 'description'):
