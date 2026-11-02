@@ -30,7 +30,7 @@ x-gitlab: &gitlab
     - traefik.http.middlewares.gitlab-entry.redirectregex.replacement=$${1}/#/app/com.ictrek.gitlab/gitlab
     - traefik.http.middlewares.gitlab-entry.redirectregex.permanent=false
   healthcheck:
-    test: [CMD, /opt/gitlab/bin/gitlab-healthcheck, --fail, --max-time, '10']
+    test: [CMD, curl, --fail, --silent, --show-error, --max-time, '10', 'http://127.0.0.1/app/com.ictrek.gitlab/-/readiness']
     interval: 30s
     timeout: 15s
     retries: 20

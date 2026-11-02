@@ -228,3 +228,9 @@ and PGV packages. Feature-document revision numbers do not define platform relea
 
 The external HTTPS URL is a required installation field with no empty default.
 Use the actual device address, for example `https://vos.example.com:1180/app/com.ictrek.gitlab`.
+
+VOS readiness waits for GitLab HTTP `/-/readiness` under the application base path.
+The container starting successfully does not mean first-time initialization is complete.
+
+Concurrent callbacks for the same verified VOS identity are serialized before native
+account lookup and creation, preventing duplicate first-login provisioning.
