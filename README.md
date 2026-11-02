@@ -241,3 +241,8 @@ state slot. Native CSRF validation and one-use replay rejection remain enabled.
 
 Re-entering with the same mapped identity preserves the existing native session.
 Only switching to a different identity signs out the previous GitLab account.
+
+The VOS entry keeps a small integration frame alive across native GitLab navigation.
+It reads the initial VOS locale and listens for `locale-change`, updates the signed-in
+user through GitLab’s native CSRF-protected preferences endpoint, and reloads content
+only when the language changes. Chinese and English follow VOS; login and accounts remain native.

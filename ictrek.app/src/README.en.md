@@ -33,3 +33,5 @@ If 0.0.2 was installed, stop it before upgrading. Select the previous `<GITLAB_S
 
 The external HTTPS URL is a required installation field with no empty default.
 Use the actual device address, for example `https://vos.example.com:1180/app/com.ictrek.gitlab`.
+
+The interface follows the initial VOS language and live language changes through the signed-in account’s native GitLab language preference. Content reloads when the language changes.

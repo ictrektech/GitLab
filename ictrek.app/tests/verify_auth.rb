@@ -51,7 +51,7 @@ browser.get("#{base}/-/vos/fastpath.js")
 assert(browser.response.status == 200, "Bridge script failed: #{browser.response.status}")
 assert(browser.response.media_type == 'application/javascript', 'Bridge script has the wrong content type')
 puts 'PASS: public bridge script is available to a native script tag'
-browser.get("#{base}/-/vos/sign_in")
+browser.get("#{base}/-/vos/sign_in?embedded=1")
 assert(browser.response.status == 200, "Bootstrap failed: #{browser.response.status} #{browser.response.location}")
 doc = Nokogiri::HTML(browser.response.body)
 csrf = doc.at_css('input[name="authenticity_token"]')&.[]('value')
@@ -69,7 +69,7 @@ assert(browser.request.env['warden'].user(:user)&.id == first.id, 'Callback did 
 puts 'PASS: native request/callback flow establishes the mapped GitLab session'
 
 # Start a second login in the same browser to exercise account switching rather than identity linking.
-browser.get("#{base}/-/vos/sign_in")
+browser.get("#{base}/-/vos/sign_in?embedded=1")
 doc = Nokogiri::HTML(browser.response.body)
 csrf = doc.at_css('input[name="authenticity_token"]')&.[]('value')
 browser.post("#{base}/users/auth/vos", params: { authenticity_token: csrf })
@@ -83,7 +83,7 @@ assert(Identity.with_extern_uid('vos', bob[:uid]).take.user_id == second.id, 'VO
 puts 'PASS: account switching establishes a separate native session without linking identities'
 
 # A fresh CSRF token must not make an already-consumed callback challenge reusable.
-browser.get("#{base}/-/vos/sign_in")
+browser.get("#{base}/-/vos/sign_in?embedded=1")
 doc = Nokogiri::HTML(browser.response.body)
 csrf = doc.at_css('input[name="authenticity_token"]')&.[]('value')
 browser.post("#{base}/users/auth/vos/callback", params: { authenticity_token: csrf, state: state, access_token: 'alice' })

@@ -1,0 +1,10 @@
+!!! 5
+%html
+  %head
+    %meta{ charset: 'utf-8' }
+    %meta{ name: 'viewport', content: 'width=device-width, initial-scale=1' }
+    %title GitLab
+    = stylesheet_link_tag vos_style_path
+    = javascript_include_tag vos_locale_script_path, defer: true
+  %body
+    %iframe#vos-gitlab{ src: vos_sign_in_path(embedded: 1), title: 'GitLab', data: { preferences_url: profile_preferences_path, locales: Gitlab::I18n.available_locales.to_json } }

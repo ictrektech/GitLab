@@ -27,6 +27,9 @@ end
 Gitlab::ApplicationRateLimiter::LabkitAdapter::SupportedRateLimits.singleton_class.prepend(Gitlab::Auth::Vos::RateLimits)
 
 Rails.application.routes.prepend do
+  get '/-/vos/app', to: 'vos/sessions#app', as: :vos_app
+  get '/-/vos/locale.js', to: 'vos/sessions#locale_script', as: :vos_locale_script
+  get '/-/vos/shell.css', to: 'vos/sessions#style', as: :vos_style
   get '/-/vos/sign_in', to: 'vos/sessions#new', as: :vos_sign_in
   get '/-/vos/fastpath.js', to: 'vos/sessions#script', as: :vos_fastpath
 end
