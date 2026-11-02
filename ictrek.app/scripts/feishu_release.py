@@ -4,9 +4,8 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import urllib.request
-from pathlib import Path
+from resolve_feishu_images import load_credentials
 
 
 SPREADSHEET = "Htotsn3oahO1zxt73YMcaB1zn8e"
@@ -46,16 +45,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sheet", required=True)
     parser.add_argument("--tag", required=True)
-    parser.add_argument("--component", default="v-voice")
-    parser.add_argument("--repository", default="swr.cn-southwest-2.myhuaweicloud.com/ictrek/v-voice")
+    parser.add_argument("--component", default="gitlab")
+    parser.add_argument("--repository", default="swr.cn-southwest-2.myhuaweicloud.com/ictrek/gitlab")
     args = parser.parse_args()
 
-    config_path = Path(os.getenv("FEISHU_CONFIG_FILE", str(Path.home() / ".feishu.json")))
-    config = json.loads(config_path.read_text())
+    app_id, secret = load_credentials()
     login = request(
         "POST",
         "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-        body={"app_id": config["feishu_app_id"], "app_secret": config["feishu_app_secret"]},
+        body={"app_id": app_id, "app_secret": secret},
     )
     token = login["tenant_access_token"]
     base = f"https://open.feishu.cn/open-apis/sheets"
